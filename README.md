@@ -25,6 +25,7 @@ It answers only from facts you give it, it stops before Submit until you allow r
 - [Limits](#limits)
 - [Responsible use](#responsible-use)
 - [Development](#development)
+- [License](#license)
 
 ## What it does
 
@@ -240,3 +241,7 @@ uv run pytest -q
 ```
 
 Tests run against a fictional applicant in a temporary `JOBAGENT_HOME` (`tests/conftest.py`), so they never touch your config or data. Code lives in `src/jobagent/`; see the module map in [`AGENTS.md`](AGENTS.md).
+
+## License
+
+[MIT](LICENSE) © 2026 Maxwell Luo

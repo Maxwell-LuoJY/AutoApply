@@ -2,6 +2,8 @@
 name = "jobagent"
 version = "0.1.0"
 description = "Standalone internship application agent (fetch, screen, apply)"
+license = "MIT"
+license-files = ["LICENSE"]
 requires-python = ">=3.11"
 dependencies = [
     "openai>=1.40",

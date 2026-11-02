@@ -25,6 +25,7 @@
 - [局限](#局限)
 - [负责任地使用](#负责任地使用)
 - [开发](#开发)
+- [许可证](#许可证)
 
 ## 功能
 
@@ -240,3 +241,7 @@ uv run pytest -q
 ```
 
 测试在临时的 `JOBAGENT_HOME` 里用一个虚构的申请人运行（`tests/conftest.py`），不会碰你的配置和数据。代码在 `src/jobagent/`，模块说明见 [`AGENTS.md`](AGENTS.md)。
+
+## 许可证
+
+[MIT](LICENSE) © 2026 Maxwell Luo
