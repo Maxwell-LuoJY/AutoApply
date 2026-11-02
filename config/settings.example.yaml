@@ -1,0 +1,66 @@
+# Run settings. `uv run jobagent init` copies this file to config/settings.yaml (git-ignored).
+# 运行参数。`uv run jobagent init` 会把本文件复制成 config/settings.yaml（不进 git）。
+# LLM endpoint, model and keys live in .env (LLM_BASE_URL / LLM_MODEL / LLM_API_KEY).
+# LLM 地址、模型、密钥在 .env 里。
+
+term: Summer 2027          # the internship term you are applying for / 申请的实习学期
+
+# Postings older than this are never screened or applied to (`jobagent mark <ID> next` overrides it for one job).
+# 发布超过这么多天的岗位不再筛选、不再投递（用 `jobagent mark <ID> next` 指定的岗位除外）。
+max_age_days: 30
+
+# Companies to ignore completely (not screened, not applied to, not listed for manual applying). Whole-word match on
+# the company name ("Wing" matches "Wing LLC", not "Wingstop"). Optional `until`: the entry stops applying after it.
+# 禁用列表：这些公司的岗位一律忽略。按公司名整词匹配；可选 until，过了这天自动恢复。
+blocked_companies: []
+#  - {name: Example Corp, reason: application limit reached}
+#  - {name: Another Co, reason: at most 4 applications per 30 days, until: 2027-01-15}
+
+sources:
+  simplify:
+    url: https://raw.githubusercontent.com/SimplifyJobs/Summer2027-Internships/dev/.github/scripts/listings.json
+    # the "Software Engineering" and "Data Science, AI & Machine Learning" sections of the Simplify README
+    categories: [Software, AI/ML/Data, Software Engineering, "Data Science, AI & Machine Learning"]
+  speedyapply:
+    url: https://raw.githubusercontent.com/speedyapply/2027-SWE-College-Jobs/main/README.md
+    section: "## 2027 USA SWE Internships"
+
+llm:
+  # LLM_MODEL in .env is always tried first; when it is rate-limited (429), these models on the same endpoint and keys
+  # are tried in order. Leave empty if your endpoint serves one model.
+  # .env 的 LLM_MODEL 优先；被限流（429）时依次改用下面这些模型（同一个接口、同一批 key）。
+  fallback_models: []
+
+daily:
+  # `jobagent daily`: fetch new postings → rules → LLM screen → submit → daily_reports/YYYY-MM-DD.md
+  max_submissions: 20  # most real submissions per day / 一天最多真实提交多少个
+  screen_limit: 200    # most JDs the LLM reads per day (last 24 hours first, the rest in the background while applying)
+  workers: 3           # parallel browsers / 同时开几个浏览器
+
+screening:
+  per_run: 60          # most JDs the LLM reads per run (newest first) / 每次最多用 LLM 读多少个 JD
+  workers: 5           # parallel JD fetches (LLM requests are still paced by llm_rps)
+  llm_rps: 0.3         # most LLM requests per second; lower it if your endpoint returns 429 / 每秒最多几个 LLM 请求
+  jd_max_chars: 24000  # longer JDs are cut / JD 超过这个长度时截断
+  max_attempts: 3      # retries on fetch / LLM errors
+
+applying:
+  mode: dry_run        # dry_run: fill the form, screenshot, stop before Submit; submit: really submit
+                       # dry_run：填到提交前截图停下；submit：真的提交（`apply --submit` 也会真的提交）
+  batch_size: 20       # `jobagent apply --submit` stops after this many submissions / 每批提交多少个
+  workers: 3           # parallel browsers (they share every API key in .env) / 同时开几个浏览器
+  max_attempts_per_batch: 100   # most jobs tried per batch, so a run of failures can't go on forever
+  max_refills: 6       # when the queue runs dry, screen this many more rounds (screening.per_run each)
+  max_failures: 3      # a job that failed this many times in applications.csv is not tried again
+  headless: true       # false: show the browser windows / false 会弹出浏览器窗口
+  timezone: America/Chicago     # the browser's time zone (IANA name) / 浏览器时区
+  accounts_in_dry_run: false    # may a dry run sign in / sign up on Workday (submit runs always may, with credentials.txt)
+  # Sites that need an account / emailed code, or refuse automation: listed for manual applying, no browser opened.
+  # 需要账号、邮箱验证码或明确拒绝自动化访问的招聘系统：直接列为"需手动投"。
+  unsupported: [oracle, icims, tiktok, amazon, google, smartrecruiters, successfactors]
+  # true: fill work experience / education / skills straight from config/resumes/*.yaml (`jobagent resume parse`);
+  # false: the LLM reads the resume for them.
+  structured_resume: false
+  # Companies you applied to outside the agent (not in applications.csv): their new postings are listed for you to
+  # decide instead of being applied to. / 你在 agent 之外投过的公司：新岗位不自动投，列进手动清单让你决定。
+  hold_companies: []

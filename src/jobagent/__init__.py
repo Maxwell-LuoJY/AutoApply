@@ -1,0 +1,1 @@
+"""Standalone internship application agent."""

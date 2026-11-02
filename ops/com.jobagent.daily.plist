@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Daily run: `jobagent daily` (inbox + fetch + screen + real submissions, at most daily.max_submissions). Installed by ops/install_schedule.sh. -->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.jobagent.daily</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/zsh</string>
+        <string>-lc</string>
+        <string>cd "__ROOT__" &amp;&amp; "__UV__" run jobagent daily &gt;&gt; data/launchd.log 2&gt;&amp;1</string>
+    </array>
+    <!-- 每天 9:00；Mac 睡眠错过时，唤醒后会补跑一次 -->
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Hour</key>
+        <integer>9</integer>
+        <key>Minute</key>
+        <integer>0</integer>
+    </dict>
+    <key>RunAtLoad</key>
+    <false/>
+</dict>
+</plist>

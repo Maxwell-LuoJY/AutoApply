@@ -1,0 +1,90 @@
+# Applicant facts. Every form answer comes from this file, config/answers.yaml and your resume — nothing else.
+# 申请人信息。填表时所有答案只来自本文件、config/answers.yaml 和简历。
+# `uv run jobagent init` copies this file to config/profile.yaml (git-ignored). Replace every value below.
+# `uv run jobagent init` 会把本文件复制成 config/profile.yaml（不进 git），把下面每一项换成你自己的。
+
+name:
+  first: Alex             # legal first name / 法定名
+  last: Rivera            # legal last name / 法定姓
+  middle: ""              # leave empty if none / 没有就留空（会清掉招聘网站简历解析误填的中间名）
+  preferred: Alex         # preferred name / 常用名
+
+contact:
+  email: alex.rivera@example.com
+  phone: "(555) 010-0199"
+  school_email: arivera@umich.example.edu   # used when a form asks for a university / .edu email / 表里问学校邮箱时填
+  address:
+    street: 123 Main St
+    line2: ""             # apartment / suite, if any / 公寓号，没有就留空
+    city: Ann Arbor
+    county: Washtenaw
+    state: Michigan
+    zip: "48104"
+    country: United States
+
+links:
+  linkedin: https://www.linkedin.com/in/alex-rivera-example
+  github: https://github.com/alex-rivera-example
+  website: ""             # empty: the GitHub URL is used for "website / portfolio" / 留空时用 GitHub 链接
+
+# Most recent first. The first entry is the degree you are studying for now: it decides which postings are open to you
+# (master: skip undergrad-only and PhD-only roles; bachelor: skip graduate-only roles; phd: skip undergrad/Master's-only).
+# 最近的在前。第一条是你正在读的学位，决定哪些岗位算"不招你这个学位"（master / bachelor / phd）。
+education:
+  - school: University of Michigan          # write it the way forms should show it, without a leading "The"
+    aliases: [UMich]                        # other names, so "UMich-only" roles aren't filtered out / 学校别名
+    degree: M.S. in Computer Science
+    level: master                           # master | bachelor | phd | associate
+    start: "2026-09"
+    end: "2028-05"                          # expected graduation / 预计毕业
+    expected: true                          # still studying here / 在读
+    gpa: null                               # null: GPA boxes for this school stay blank / 没有 GPA 填 null
+  - school: University of Texas at Austin
+    degree: B.S. in Computer Science
+    level: bachelor
+    start: "2022-09"
+    end: "2026-05"
+    expected: false
+    gpa: "3.70/4.00"
+    honors: ""
+
+availability: Summer 2027 (May/June 2027)
+
+work_authorization:
+  authorized_to_work_in_us: true
+  requires_sponsorship_now_or_future: true   # true: postings that say "no sponsorship" are skipped / 需要担保时跳过不担保的岗位
+  us_citizen_or_permanent_resident: false    # false: roles requiring citizenship / clearance are skipped
+  permanent_or_indefinite: false             # "authorized to work permanently / indefinitely?" / 是否有永久工作许可
+  visa_status: F-1 student
+  green_card: none
+  citizenship: India                         # one country or a list; "is your country on this list?" questions / 国籍
+  notes: ""                                  # anything else the form filler must know about sponsorship questions
+                                             # 关于 sponsorship 题的补充说明（会原样交给 LLM）
+
+# Voluntary self-identification. "Decline to answer" is always a valid choice.
+# 自愿披露信息，可以都填 "Decline to answer"。
+eeo:
+  gender: Decline to answer
+  race: Decline to answer
+  hispanic_or_latino: Decline to answer
+  disability: Decline to answer
+  veteran: "I am not a veteran (have never served in the military)"
+  sexual_orientation: Decline to answer
+  other_voluntary: Decline to answer
+
+defaults:
+  how_did_you_hear: Online job board / GitHub
+  willing_to_relocate: "Yes"
+  previously_worked_here: "No"
+  salary_expectation: "Negotiable"           # every salary / pay expectation question gets this / 所有期望薪资题都填这个
+  cover_letter: skip_job_if_required         # jobs that require a cover letter are skipped / 必填 cover letter 的岗位跳过
+  open_ended_required: skip_job
+  transcript: upload_only_if_required
+
+# Two resume tracks: SDE (software roles, the default) and AIE (AI / ML / data / analyst / consulting roles).
+# One resume only? Delete the AIE entry (or point both at the same file). A .docx is uploaded until the PDF exists.
+# 两份简历：SDE（软件类，默认）和 AIE（AI / 数据 / 分析 / 咨询类）。只有一份就删掉 AIE。PDF 不存在时上传 .docx。
+resumes:
+  SDE: {pdf: materials/Resume_Alex_Rivera_SDE.pdf, docx: materials/Resume_Alex_Rivera_SDE.docx}
+  AIE: {pdf: materials/Resume_Alex_Rivera_AIE.pdf, docx: materials/Resume_Alex_Rivera_AIE.docx}
+transcript: materials/Transcript.pdf          # uploaded only when a form requires it / 只在强制要求时上传

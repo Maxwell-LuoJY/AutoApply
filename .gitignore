@@ -1,0 +1,36 @@
+# Secrets and accounts: never in git / 密钥和账号：永远不进 git
+.env
+credentials.txt
+
+# Your own config (templates: config/*.example.yaml) / 你自己的配置（模板是 config/*.example.yaml）
+config/profile.yaml
+config/answers.yaml
+config/settings.yaml
+config/resumes/
+
+# Database, browser sign-ins, screenshots, logs / 数据库、浏览器登录状态、截图、日志
+data/
+
+# Personal materials (resumes, transcripts) / 个人材料（简历、成绩单）
+materials/
+
+# Per-run output (not code) / 每次运行生成的结果
+applications.csv
+manual_apply.md
+daily_reports/
+reviews/
+run_logs/
+shortlists/
+
+# Personal notes / 个人笔记
+rules.md
+ai_engineer_roles.md
+research/
+
+# Python / tools
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.DS_Store
+.claude/settings.local.json
