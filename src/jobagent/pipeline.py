@@ -112,7 +112,7 @@ def refilter(db: DB) -> dict[str, int]:
 
 
 def screen_pending(db: DB, limit: int | None = None, llm: LLM | None = None, ids: list[str] | None = None,
-                   posted_after: float | None = None) -> ScreenStats:
+                   posted_after: float | None = None, workers: int | None = None) -> ScreenStats:
     """LLM-screen the newest pending jobs posted within max_age_days, or only those posted after `posted_after`
     (or exactly `ids`, if they are still pending)."""
     cfg = config.settings()
@@ -134,7 +134,7 @@ def screen_pending(db: DB, limit: int | None = None, llm: LLM | None = None, ids
 
     llm, profile = llm or LLM(rps=sc.get("llm_rps", 1.0)), config.profile()
     csv_rows = []
-    with ThreadPoolExecutor(max_workers=sc["workers"]) as pool:
+    with ThreadPoolExecutor(max_workers=workers or sc["workers"]) as pool:
         futures = {pool.submit(screen, r, llm, profile, term, sc["jd_max_chars"]): r for r in rows}
         for fut in as_completed(futures):
             r = futures[fut]
@@ -168,7 +168,8 @@ def screen_pending(db: DB, limit: int | None = None, llm: LLM | None = None, ids
 
 class BacklogScreen(threading.Thread):
     """Screens older pending jobs on its own DB connection while today's applications run (user, 2026-11-01:
-    当日投递和过往筛查同步进行). Shares the run's LLM, so both stay within one rate limit."""
+    当日投递和过往筛查同步进行). Shares the run's LLM, so both stay within one rate limit, with fewer threads than
+    the applications so today's jobs get most of it (a pre-submit check starved of the LLM once failed a job)."""
 
     def __init__(self, db_path, limit: int, llm: LLM) -> None:
         super().__init__(name="screen-backlog", daemon=True)
@@ -177,7 +178,8 @@ class BacklogScreen(threading.Thread):
     def run(self) -> None:
         db = DB(self.db_path)
         try:
-            self.stats = screen_pending(db, self.limit, self.llm)
+            workers = (config.settings().get("daily") or {}).get("backlog_workers", 2)
+            self.stats = screen_pending(db, self.limit, self.llm, workers=workers)
         except Exception:
             log.exception("后台筛选出错")
         finally:

@@ -22,6 +22,10 @@ from . import config
 log = logging.getLogger("jobagent")
 
 
+class Throttled(RuntimeError):
+    """Every key and model stayed rate-limited for the whole patience window: try the job again later."""
+
+
 class _RateLimiter:
     """Spaces request starts at least `interval` seconds apart across all threads (the endpoint 429s on bursts).
     The interval grows after each 429 and creeps back to 1/rps after successes, so a busy key stops being hammered."""
@@ -166,7 +170,7 @@ class LLM:
                 resp.model = s.model  # the slot's name, whatever alias the endpoint echoes back
                 return resp
             if time.monotonic() > deadline:
-                raise RuntimeError("所有 API key 都被限流，稍后再试")
+                raise Throttled("所有 API key 都被限流，稍后再试")
             soonest = min(s.cool_until for s in self.slots)
             if soonest == math.inf:
                 raise RuntimeError("没有可用的 LLM 模型（都被判定为不可用）")

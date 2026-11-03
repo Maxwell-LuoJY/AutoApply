@@ -665,3 +665,27 @@ def test_confirmations_search_a_day_back_across_utc_midnight(monkeypatch):
     found = mail.Mailbox("me@example.com", "pw").confirmations(since)
     assert searches == ['(SINCE "01-Nov-2026")']
     assert [subj for _, _, subj in found] == ["Thank You For Applying!"]
+
+
+def test_throttled_pre_submit_check_is_retried_not_failed(monkeypatch):
+    """Every key rate-limited during the pre-submit check: nothing is submitted and the job is tried again later."""
+    from types import SimpleNamespace
+    import pytest
+    from jobagent.apply import audit, forms, runner
+    from jobagent.apply.adapters import Failed
+    from jobagent.llm import Throttled
+    monkeypatch.setattr(forms, "snapshot", lambda page, root: SimpleNamespace(fields=[]))
+    monkeypatch.setattr(forms, "missing_required", lambda fields: [])
+    adapter = SimpleNamespace(root=None, relevant=lambda f: True)
+
+    def run(*a):
+        raise Throttled("所有 API key 都被限流，稍后再试")
+    monkeypatch.setattr(audit, "run", run)
+    with pytest.raises(Throttled):
+        runner._final_audit(None, adapter, None, [], lambda name: None)
+
+    def broken(*a):
+        raise ValueError("judge reply was not JSON")
+    monkeypatch.setattr(audit, "run", broken)
+    with pytest.raises(Failed):  # any other problem still blocks the submission
+        runner._final_audit(None, adapter, None, [], lambda name: None)

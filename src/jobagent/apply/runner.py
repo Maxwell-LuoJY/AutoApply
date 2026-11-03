@@ -18,7 +18,7 @@ from playwright.sync_api import Page
 
 from .. import config, history, pipeline
 from ..db import DB
-from ..llm import LLM
+from ..llm import LLM, Throttled
 from openai import RateLimitError
 from ..rules import blocked_company, csv_category, too_old
 from . import answers, audit, forms
@@ -232,7 +232,7 @@ def _final_audit(page: Page, adapter: Adapter, ctx: ApplyContext, qa: list, shot
             raise Failed("这些必填项没填上：" + "；".join(missing[:5]))
         try:
             items, found = audit.run(page, adapter, snap, ctx, qa)
-        except (PlaywrightError, RateLimitError):
+        except (PlaywrightError, RateLimitError, Throttled):  # rate limits: the job is tried again later
             raise
         except Exception as e:  # no verdict means no submission
             shot("before-submit")
@@ -517,7 +517,7 @@ def apply_job(session: BrowserSession, row, ctx: ApplyContext) -> Outcome:
     except Exception as e:  # LLM/API/anything else: fail this job, keep the batch going
         shot("error")
         msg = f"{type(e).__name__}: {str(e).splitlines()[0][:200] if str(e) else ''}"
-        if isinstance(e, RateLimitError) or "限流" in str(e):
+        if isinstance(e, (RateLimitError, Throttled)):
             return Outcome("retry", f"API 限流，稍后重试：{msg}", qa, shots, page.url)  # nothing was submitted
         log.exception("处理 %s 时出错", row["id"])
         return Outcome("failed", msg, qa, shots, page.url)

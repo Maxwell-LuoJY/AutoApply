@@ -36,6 +36,7 @@ daily:
   max_submissions: 20  # most real submissions per day / 一天最多真实提交多少个
   screen_limit: 200    # most JDs the LLM reads per day (last 24 hours first, the rest in the background while applying)
   workers: 3           # parallel browsers / 同时开几个浏览器
+  backlog_workers: 2   # LLM threads screening older postings while applying (fewer, so today's jobs come first) / 投递时后台筛选的并发数
 
 screening:
   per_run: 60          # most JDs the LLM reads per run (newest first) / 每次最多用 LLM 读多少个 JD
