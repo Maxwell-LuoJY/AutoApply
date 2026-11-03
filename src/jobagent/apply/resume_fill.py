@@ -38,7 +38,7 @@ _SKILLS = re.compile(r"skill")
 _DEGREE_WORDS = {
     "master": ["Master of Science", "Master's Degree", "Master's", "Masters", "Master", "M.S.", "MS"],
     "bachelor": ["Bachelor of Engineering", "Bachelor's Degree", "Bachelor's", "Bachelors", "Bachelor", "B.Eng.", "B.E.",
-                 "B.S.", "BS"],   # some lists use abbreviations only (Wawa: A.A. / B.S. / M.S.)
+                 "BEng", "BE", "B.S.", "BS"],   # some lists use abbreviations only (Wawa: A.A. / B.S. / M.S.; JM Family: BE)
     "phd": ["Doctor of Philosophy", "Doctorate", "PhD", "Ph.D."],
 }
 

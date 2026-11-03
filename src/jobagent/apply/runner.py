@@ -322,6 +322,11 @@ def _fix_on_earlier_pages(page: Page, adapter: Adapter, problems: list, shot=lam
                 if before and now.get((label, nth)) == before:
                     if settled is not None and re.search(r"(?i)field of study|major|discipline|degree", label or ""):
                         settled[(forms.norm(label), before)] = True  # nothing closer in the list (HP: "Computer Science and Mathematics")
+                    elif settled is not None and re.search(r"(?i)\bphone\b.*\btype\b|device type", label or "") \
+                            and forms.best_option(str(value), [before]):
+                        # the list's word for it: "Mobile" re-entered on NVIDIA's list picks "Home Cellular" again
+                        log.info("   「%s」：列表里的「%s」就是「%s」，保留", (label or "")[:50], before[:50], str(value)[:30])
+                        settled[(forms.norm(label), before)] = True
                     else:  # any other field must take the fix (RBC: school country stayed "Other" and was submitted)
                         log.info("   修改没生效：「%s」还是「%s」", (label or "")[:50], before[:50])
                         return False

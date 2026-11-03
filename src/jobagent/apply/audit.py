@@ -127,7 +127,8 @@ NOT problems: formatting differences (phone punctuation, date formats, "The Univ
 company with or without its department); a choice field holding the closest available option when the exact fact is not
 among its options (e.g. graduation "May/June" when the exact month isn't offered, major "Computer Science" when
 "Artificial Intelligence" isn't offered); any "how did you hear about us" answer; optional fields left blank; a GPA left
-blank where the facts say it stays blank (intentional); "I have a preferred name" left unchecked / No (intentional: the
+blank where the facts say it stays blank (intentional); a phone type meaning a mobile phone ("Home Cellular", "Cell",
+"Personal Cell") for the applicant's mobile; "I have a preferred name" left unchecked / No (intentional: the
 legal name is used); a school shown as "Other" (the employer's list doesn't have it); skills lists (not checked); an
 empty optional Websites, Languages or Skills section ("No Response"); the wording of essays and free-text answers;
 anything consistent with the facts.{middle}
@@ -285,10 +286,25 @@ def _kind(qa: list[dict], label: str) -> str:
     return next((q["kind"] for q in reversed(qa) if q.get("label") == label), "text")
 
 
+def missing_entries(text: str, targets: dict[str, int]) -> list[Problem]:
+    """A review page numbering fewer schools or jobs than the resume lists: an entry was lost on the way (JM Family,
+    2026-11-03: Workday dropped the first school entry while a degree was corrected, and the application went out).
+    Only pages that number their entries ("Education 1", "Work Experience 2") are checked."""
+    out = []
+    for key, pattern, name in (("edu", r"education", "教育经历"), ("work", r"(?:work |professional )?experience", "工作经历")):
+        shown_n = len(set(re.findall(rf"(?im)^\s*{pattern} (\d+)\s*$", text)))
+        if shown_n and shown_n < targets.get(key, 0):
+            out.append(Problem(f"{name}条数", f"{shown_n} 条", f"简历上的 {targets[key]} 条", None))
+    return out
+
+
 def run(page: Page, adapter, snap: forms.Snapshot, ctx, qa: list[dict]) -> tuple[list[dict], list[Problem]]:
     """(this page's readback items, problems found). Rules first: a rule problem is certain, the LLM isn't needed."""
     items, text = readback(page, adapter, snap)
     problems = rule_problems(items, ctx.profile, ctx.row)
+    if text and ctx.row is not None:
+        from .adapters import resume_targets
+        problems += missing_entries(text, resume_targets(ctx))
     if not problems:
         problems = judge(ctx.llm, ctx.profile, ctx.row, items, text, qa, getattr(ctx, "seen", None))
     qa.append({"label": "提交前总核对", "kind": "audit", "basis": "audit", "error": None,

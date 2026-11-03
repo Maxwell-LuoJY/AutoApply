@@ -689,3 +689,37 @@ def test_throttled_pre_submit_check_is_retried_not_failed(monkeypatch):
     monkeypatch.setattr(audit, "run", broken)
     with pytest.raises(Failed):  # any other problem still blocks the submission
         runner._final_audit(None, adapter, None, [], lambda name: None)
+
+
+def test_beng_gets_be_from_a_list_of_bare_abbreviations(monkeypatch):
+    """JM Family lists BS and BE: the B.Eng. takes BE, even when the page already shows BS."""
+    from jobagent.apply import answers
+    data = {"education": [{"school": "Example Tech University", "degree": "B.Eng. in Artificial Intelligence",
+                           "level": "bachelor", "field": "Artificial Intelligence"}]}
+    monkeypatch.setattr(answers, "structured_resume", lambda kind: data)
+    opts = ["AA", "BA", "BS", "BE", "MS", "PhD"]
+    for shown in ("", "BS"):
+        fields = [{"id": "s", "kind": "combobox", "label": "Education 1 — School or University", "nth": 0,
+                   "value": "Example Tech University", "options": []},
+                  {"id": "dg", "kind": "select", "label": "Education 1 — Degree", "nth": 0, "value": shown, "options": opts}]
+        assert answers._education_by_school(fields, {"resume": "AIE"})["dg"].value == "BE"
+
+
+def test_preferred_name_box_stays_unticked_in_either_form():
+    from jobagent.apply import answers
+    profile = {"name": {"first": "Ada", "last": "Lovelace", "preferred": "Countess"}}
+    single = {"id": "c", "kind": "checkbox_single", "label": "I have a preferred name", "value": False}
+    group = {"id": "g", "kind": "checkbox", "label": "My Information", "value": [], "options": ["I have a preferred name"]}
+    assert answers._deterministic(single, profile, None).value is False
+    item = answers._deterministic(group, profile, None)
+    assert item is not None and item.value == []
+
+
+def test_review_page_with_a_lost_entry_blocks_submission():
+    from jobagent.apply.audit import missing_entries
+    page = ("My Experience\nWork Experience\nWork Experience 1\nJob Title\nAI Engineer Intern\nWork Experience 2\n"
+            "Job Title\nTrainee\nEducation\nEducation 1\nSchool or University\nExample Tech University\n")
+    problems = missing_entries(page, {"work": 2, "edu": 2})
+    assert [p.field for p in problems] == ["教育经历条数"] and problems[0].fix is None
+    assert missing_entries(page, {"work": 2, "edu": 1}) == []
+    assert missing_entries("Thanks for applying", {"work": 4, "edu": 2}) == []  # no numbered entries: not checked

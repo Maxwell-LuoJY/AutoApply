@@ -320,6 +320,10 @@ def _deterministic(f: dict, profile: dict, row) -> Item | None:
     if f["kind"] == "checkbox_single" and re.search(r"preferred name", label):
         # ticking it reveals a second "First Name / Last Name" pair that can't be told apart from the legal one
         return Item(f, False, "default")
+    if f["kind"] == "checkbox" and (opts := f.get("options")) and all(re.search(r"(?i)preferred name", o) for o in opts):
+        # the same box read as a one-option group under the section title ("My Information": LabCorp, Marriott): the
+        # planner ticked it because the profile has a preferred name, and the legal name went into the preferred one
+        return Item(f, [], "default")
     if f["kind"] == "file":
         if re.search(r"cover letter", label):
             return Item(f, "", "default")
@@ -354,16 +358,19 @@ _DEGREE_FILLER = {"degree", "or", "equivalent", "in", "progress", "s", "universi
 
 def _degree_fit(option: str, level: str | None) -> int:
     """How well a degree option fits the resume degree of `level` (an M.S. in CS, a B.Eng. in AI):
-    3 a Science / Engineering degree or a general one ("Masters Degree or Equivalent", "MASTER - IN PROGRESS"),
-    2 an engineering master's, 1 another degree of that level ("Masters of Technology"), 0 another field, -1 another level."""
+    4 the B.Eng. itself ("Bachelor of Engineering", "BE"), 3 a Science degree or a general one ("Masters Degree or
+    Equivalent", "MASTER - IN PROGRESS"), 2 an engineering master's, 1 another degree of that level ("Masters of
+    Technology"), 0 another field, -1 another level."""
     if not level or _level_of(option) != level:
         return -1
     n = norm(re.sub(r"\(.*?\)", " ", option))
     words = set(n.split())
-    science, engineering = bool(words & {"science", "sciences"}), bool(words & {"engineering", "eng", "beng", "btech"})
+    science, engineering = bool(words & {"science", "sciences"}), bool(words & {"engineering", "eng", "beng", "be", "btech"})
     if _STRONG_OTHER.search(n) or (_WEAK_OTHER.search(n) and not science):
         return 0
-    if science or (level == "bachelor" and engineering) or not (words - _DEGREE_FILLER):
+    if level == "bachelor" and engineering:
+        return 4  # JM Family lists BS and BE: "BS" was picked for the B.Eng., then corrected on the way to Submit
+    if science or not (words - _DEGREE_FILLER):
         return 3
     return 2 if engineering else 1
 
