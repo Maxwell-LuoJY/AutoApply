@@ -336,3 +336,24 @@ def test_degree_level_is_read_from_the_degree_name():
     assert config.degree_level({"degree": "Ph.D. in Physics"}) == "phd"
     assert config.degree_level({"degree": "MBA"}) == "master"
     assert config.degree_level({"degree": "Whatever", "level": "Bachelor"}) == "bachelor"
+
+
+def test_coop_titles_are_never_applied_to(tmp_path, monkeypatch):
+    """The user (2026-11-03): a title that says co-op is skipped, and leaves the queue if it is already there."""
+    from jobagent import config, pipeline
+    from jobagent.db import DB
+    from jobagent.rules import coop_title
+    for t in ("Software Engineer Co-op", "Data Science Coop", "Intern/Co-op - Software", "Co Op Engineer", "CO-OP"):
+        assert coop_title(t), t
+    for t in ("Cooperative Systems Intern", "Co-operative Intern", "Scoop Data Intern", "Software Engineer Intern"):
+        assert coop_title(t) is None, t
+    assert hard_filter(P("Machine Learning Co-op")).startswith("岗位名称写明是 co-op")
+    settings = {**config.settings(), "blocked_companies": [], "max_age_days": None}
+    monkeypatch.setattr(config, "settings", lambda: settings)
+    monkeypatch.setattr(config, "APPLICATIONS_CSV", tmp_path / "applications.csv")
+    db = DB(tmp_path / "jobs.db")
+    queued = Posting("Simplify", "Acme", "Software Engineering Co-op", "https://x.com/coop", ["Chicago, IL"], "Software", 0)
+    db.upsert(queued)
+    db.update(job_id(queued.url), stage="eligible")
+    pipeline.refilter(db)
+    assert db.get(job_id(queued.url))["stage"] == "filtered"

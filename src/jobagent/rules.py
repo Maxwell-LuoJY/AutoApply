@@ -160,6 +160,14 @@ def _is_applicant_school(name: str, schools: tuple[str, ...]) -> bool:
     return any(s and (s in n or n in s) for s in map(squash, schools))
 
 
+_COOP = re.compile(r"(?i)\bco[-\u2010\u2011\u2013 ]?ops?\b")  # Co-op, Coop, Co op, Co-ops; not "Cooperative"
+
+
+def coop_title(title: str) -> str | None:
+    """The user (2026-11-03): a job whose title says it is a co-op is not applied to."""
+    return "岗位名称写明是 co-op（你要求 co-op 不投）" if _COOP.search(title or "") else None
+
+
 def hard_filter(p: Posting, term: str = "Summer 2027", level: str = "master", citizen: bool = False,
                 schools: tuple[str, ...] = ()) -> str | None:
     """Return a skip reason (Chinese, for the logs), or None if the posting passes.
@@ -195,6 +203,8 @@ def hard_filter(p: Posting, term: str = "Summer 2027", level: str = "master", ci
     if terms_in_title and (want_season, want_year) not in terms_in_title:
         season, year = terms_in_title[0]
         return f"非 {term}（岗位名称含 {season.title()} 20{year}）"
+    if reason := coop_title(t):  # last, so a more specific reason (another term, one school) is the one shown
+        return reason
     return None
 
 

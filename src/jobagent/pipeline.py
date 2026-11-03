@@ -12,8 +12,8 @@ from datetime import datetime
 from . import config, history
 from .db import DB, row_to_posting
 from .llm import LLM
-from .rules import (DAY, applicant_schools, apply_order, blocked_company, company_title_key, csv_category, hard_filter,
-                    pick_resume, too_old)
+from .rules import (DAY, applicant_schools, apply_order, blocked_company, company_title_key, coop_title, csv_category,
+                    hard_filter, pick_resume, too_old)
 from .screen import fit_score, rate_fit, screen
 from .sources import simplify, speedyapply
 
@@ -21,8 +21,8 @@ log = logging.getLogger("jobagent")
 
 # Stages recomputed from scratch on every fetch; everything else is a settled decision.
 REEVALUATED = ("new", "filtered", "duplicate", "pending", "error")
-# Settled stages that still lead somewhere (the apply queue, the manual list): a blocklisted company, or a posting
-# older than max_age_days, is pulled out of them.
+# Settled stages that still lead somewhere (the apply queue, the manual list): a blocklisted company, a posting
+# older than max_age_days, or a co-op is pulled out of them.
 QUEUED = ("eligible", "unsure", "jd_missing", "manual", "blocked", "failed")
 SOURCE_LABEL = {"Simplify": "SimplifyJobs", "SpeedyApply": "SpeedyApply"}
 
@@ -80,7 +80,7 @@ def refilter(db: DB) -> dict[str, int]:
         return None if r["id"] in pins else too_old(r["date_posted"], max_age, now)
 
     for r in db.rows(f"stage IN ({','.join('?' * len(QUEUED))})", QUEUED):
-        if reason := blocked_company(r["company"], blocklist) or stale(r):
+        if reason := blocked_company(r["company"], blocklist) or stale(r) or coop_title(r["title"]):
             db.update(r["id"], stage="filtered", reason=reason)  # back in REEVALUATED: returns once the rule lets it
 
     marks = ",".join("?" * len(REEVALUATED))
