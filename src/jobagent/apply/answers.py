@@ -593,8 +593,13 @@ def plan(fields: list[dict], llm: LLM, profile: dict, row, resume_pdf: Path, cac
                     value, basis = first, "default"  # unimportant question: take the first option
             if f["kind"] == "checkbox" and isinstance(value, list):
                 # never tick "I have a preferred name" (see _deterministic): in LabCorp's and Marriott's "My
-                # Information" group the planner ticked it, and the legal name went into the preferred one
-                value = [v for v in value if not re.search(r"(?i)preferred name", str(v))]
+                # Information" group (with "SMS Opt-in") the planner ticked it, and the legal name went into the
+                # preferred one. If that was the only pick, tick none: the group is marked required, its boxes aren't.
+                kept = [v for v in value if not re.search(r"(?i)preferred name", str(v))]
+                if not kept and len(kept) < len(value):
+                    out.items.append(Item(f, [], "default"))
+                    continue
+                value = kept
             if value == UNKNOWN or (f.get("required") and value in ("", None, [], False)):
                 if f.get("required"):
                     out.unknown.append(label)

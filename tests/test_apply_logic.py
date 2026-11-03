@@ -734,3 +734,22 @@ def test_btech_is_an_ordinary_bachelors_and_preferred_name_never_ticked_in_a_gro
          "options": ["I have a preferred name", "Text me about my application"]}
     assert answers._deterministic(f, {"name": {"first": "A", "last": "B", "preferred": "C"}}, None) is None
 
+
+
+def test_required_my_information_group_ticks_none_instead_of_the_preferred_name(tmp_path, monkeypatch):
+    """LabCorp / Marriott: a required "My Information" group of [I have a preferred name, SMS Opt-in]."""
+    from jobagent import config
+    from jobagent.apply import answers
+    monkeypatch.setattr(answers, "_SHARED_PATH", tmp_path / "answer_cache.json")
+    monkeypatch.setattr(answers, "_shared", None)
+    llm = type("L", (), {"json_chat": lambda self, *a, **k: {"answers": {
+        "g": {"value": ["I have a preferred name"], "basis": "fact"},
+        "h": {"value": ["I have a preferred name", "SMS Opt-in"], "basis": "fact"}}}})()
+    profile = config.profile()
+    group = {"id": "g", "kind": "checkbox", "label": "My Information", "required": True, "nth": 0, "value": [],
+             "options": ["I have a preferred name", "SMS Opt-in"], "option_ids": ["p", "s"]}
+    both = dict(group, id="h", nth=1)
+    got = answers.plan([group, both], llm, profile, {"company": "X", "title": "Intern", "resume": "SDE"},
+                       config.ROOT / profile["resumes"]["SDE"]["pdf"])
+    assert not got.unknown
+    assert {it.field["id"]: it.value for it in got.items} == {"g": [], "h": ["SMS Opt-in"]}
