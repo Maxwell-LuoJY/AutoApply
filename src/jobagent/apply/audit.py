@@ -212,6 +212,13 @@ def judge(llm, profile: dict, row, items: list[dict], text: str, qa: list[dict],
         words = {w for w in norm(fix or "").split() if len(w) > 3}
         if words and re.search(r"field of study|major|discipline", norm(label)) and words <= set(norm(shown_now).split()):
             continue  # "Artificial Intelligence and Robotics" already is the closest the list offers
+        if re.search(r"\bdegree\b", norm(label)) and fix and (level := answers._level_of(shown_now)) \
+                and answers._level_of(fix) == level and answers._degree_fit(shown_now, level) >= 1 \
+                and (answers._degree_fit(shown_now, level) >= answers._degree_fit(fix, level)
+                     or re.search(r"(?i)not (offered|available|in the list)|isn'?t (offered|available)", fix)):
+            # another option of the same level that fits no better ("BTECH" / "Bachelors"), or one the judge says the
+            # list lacks: the trip back to correct a degree twice lost the other education entry (JM Family, NVIDIA)
+            continue
         if not known:
             fix = None  # can't tell which earlier field it means: don't guess, stop instead
         elif fix is not None and not _RESUME_OR_CONTACT.search(norm(label)):

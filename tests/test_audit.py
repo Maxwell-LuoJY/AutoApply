@@ -457,3 +457,16 @@ def test_degree_lists_with_bracketed_abbreviations_and_general_options():
     assert best_option("Bachelor's degree", jj) == "University/Bachelors Degree or Equivalent"   # J&J C&SP
     assert best_option("Master's Degree", jj) == "Masters Degree or Equivalent"
     assert best_option("Master of Science", jj) == "Masters Degree or Equivalent"   # never the medicine one
+
+
+def test_same_level_degree_complaint_goes_back_only_for_a_closer_option():
+    """A trip back to correct a degree twice lost the other education entry: only take it when the fix is closer."""
+    def judge(shown, fix):
+        llm = SimpleNamespace(json_chat=lambda system, user, max_tokens: {"ok": False, "problems": [
+            {"item": 0, "field": "Education 2 — Degree", "shown": shown, "expected": fix, "fix": fix}]})
+        item = {"kind": "select", "label": "Education 2 — Degree", "value": shown, "options": [], "nth": 0}
+        return [p.fix for p in audit.judge(llm, config.profile(), ROW, [item], "", [])]
+    assert judge("BTECH", "Bachelors") == []                                   # no better: keep (NVIDIA)
+    assert judge("Bachelor of Science (B.S.)", "Bachelor of Engineering — the exact option is not offered") == []
+    assert judge("BS", "BE") == ["BE"]                                         # the B.Eng. itself: correct it
+    assert judge("Masters", "Bachelors") == ["Bachelors"]                      # wrong level: correct it

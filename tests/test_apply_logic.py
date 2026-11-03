@@ -723,3 +723,14 @@ def test_review_page_with_a_lost_entry_blocks_submission():
     assert [p.field for p in problems] == ["教育经历条数"] and problems[0].fix is None
     assert missing_entries(page, {"work": 2, "edu": 1}) == []
     assert missing_entries("Thanks for applying", {"work": 4, "edu": 2}) == []  # no numbered entries: not checked
+
+
+def test_btech_is_an_ordinary_bachelors_and_preferred_name_never_ticked_in_a_group():
+    from jobagent.apply import answers
+    assert answers._degree_fit("BE", "bachelor") > answers._degree_fit("BTECH", "bachelor") == \
+        answers._degree_fit("Bachelors", "bachelor") == 3
+    # a "My Information" group with other boxes: the planner's answer loses the preferred-name box
+    f = {"id": "g", "kind": "checkbox", "label": "My Information", "value": [], "required": False,
+         "options": ["I have a preferred name", "Text me about my application"]}
+    assert answers._deterministic(f, {"name": {"first": "A", "last": "B", "preferred": "C"}}, None) is None
+

@@ -321,8 +321,8 @@ def _deterministic(f: dict, profile: dict, row) -> Item | None:
         # ticking it reveals a second "First Name / Last Name" pair that can't be told apart from the legal one
         return Item(f, False, "default")
     if f["kind"] == "checkbox" and (opts := f.get("options")) and all(re.search(r"(?i)preferred name", o) for o in opts):
-        # the same box read as a one-option group under the section title ("My Information": LabCorp, Marriott): the
-        # planner ticked it because the profile has a preferred name, and the legal name went into the preferred one
+        # the same box read as a group under the section title ("My Information"); in a group with other boxes the
+        # planner's answer drops it instead (plan)
         return Item(f, [], "default")
     if f["kind"] == "file":
         if re.search(r"cover letter", label):
@@ -364,14 +364,15 @@ def _degree_fit(option: str, level: str | None) -> int:
     if not level or _level_of(option) != level:
         return -1
     n = norm(re.sub(r"\(.*?\)", " ", option))
-    words = set(n.split())
-    science, engineering = bool(words & {"science", "sciences"}), bool(words & {"engineering", "eng", "beng", "be", "btech"})
+    words = set(n.split()) | set(norm(re.sub(r"\(.*?\)", " ", option).replace(".", "")).split())  # "B.E/B.Tech": be, btech
+    science, beng = bool(words & {"science", "sciences"}), bool(words & {"engineering", "eng", "beng", "be"})
+    engineering = beng or "btech" in words
     if _STRONG_OTHER.search(n) or (_WEAK_OTHER.search(n) and not science):
         return 0
-    if level == "bachelor" and engineering:
+    if level == "bachelor" and beng and not science:
         return 4  # JM Family lists BS and BE: "BS" was picked for the B.Eng., then corrected on the way to Submit
-    if science or not (words - _DEGREE_FILLER):
-        return 3
+    if science or (level == "bachelor" and engineering) or not (words - _DEGREE_FILLER):
+        return 3  # a B.Tech is a bachelor's like any other (NVIDIA: "BTECH" must not beat "Bachelors")
     return 2 if engineering else 1
 
 
@@ -590,6 +591,10 @@ def plan(fields: list[dict], llm: LLM, profile: dict, row, resume_pdf: Path, cac
                 first = neutral or (real[0] if real else None)
                 if first:
                     value, basis = first, "default"  # unimportant question: take the first option
+            if f["kind"] == "checkbox" and isinstance(value, list):
+                # never tick "I have a preferred name" (see _deterministic): in LabCorp's and Marriott's "My
+                # Information" group the planner ticked it, and the legal name went into the preferred one
+                value = [v for v in value if not re.search(r"(?i)preferred name", str(v))]
             if value == UNKNOWN or (f.get("required") and value in ("", None, [], False)):
                 if f.get("required"):
                     out.unknown.append(label)

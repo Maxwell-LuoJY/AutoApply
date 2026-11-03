@@ -561,6 +561,9 @@ def fill_field(page: Page, f: dict, value, resolve_file: Callable[[str], Path | 
             else:
                 _set_input_checked(page, oid, True)
         elif kind == "checkbox":
+            if value == []:  # tick none: a box a saved draft already ticked is unticked
+                for oid in f.get("option_ids") or []:
+                    _set_input_checked(page, oid, False)
             for want in value if isinstance(value, list) else [value]:
                 opt = best_option(want, f["options"])
                 if opt is None:
