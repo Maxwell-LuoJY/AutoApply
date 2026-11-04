@@ -470,3 +470,17 @@ def test_same_level_degree_complaint_goes_back_only_for_a_closer_option():
     assert judge("Bachelor of Science (B.S.)", "Bachelor of Engineering — the exact option is not offered") == []
     assert judge("BS", "BE") == ["BE"]                                         # the B.Eng. itself: correct it
     assert judge("Masters", "Bachelors") == ["Bachelors"]                      # wrong level: correct it
+
+
+def test_an_answer_that_did_not_save_is_entered_again_but_a_disagreement_is_not():
+    """HP: the planned salary "30" showed "No Response" on the review page: re-enter it. A judge that wants a different
+    answer to an application question still stops the job (Elanco)."""
+    def judge(shown, fix, planned):
+        llm = SimpleNamespace(json_chat=lambda system, user, max_tokens: {"ok": False, "problems": [
+            {"item": None, "field": "What is your minimum annual salary requirement?", "shown": shown,
+             "expected": fix, "fix": fix}]})
+        seen = [{"label": "What is your minimum annual salary requirement?", "kind": "textarea", "nth": 0, "value": planned}]
+        return [p.fix for p in audit.judge(llm, config.profile(), ROW, [], "Review", [], seen)]
+    assert judge("No Response", "30", "30") == ["30"]
+    assert judge("25", "30", "25") == [None]
+    assert judge("No Response", "40", "30") == [None]

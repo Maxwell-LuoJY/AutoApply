@@ -195,8 +195,9 @@ def judge(llm, profile: dict, row, items: list[dict], text: str, qa: list[dict],
         item = p.get("item") if isinstance(p.get("item"), int) and 0 <= p["item"] < len(items) else None
         label, nth = (items[item].get("label", ""), items[item].get("nth")) if item is not None else (str(p.get("field")), None)
         known = item is not None or not text or label in earlier
+        planned = None
         if item is None and label in earlier:
-            label, nth, _, _ = earlier[label]
+            label, nth, planned, _ = earlier[label]
         fix = p.get("fix")
         f = items[item] if item is not None else {"kind": _kind(qa, label), "label": label, "options": []}
         clear = fix == "" and f["kind"] in forms.TEXT_KINDS  # e.g. a middle name the site's parser invented
@@ -221,9 +222,11 @@ def judge(llm, profile: dict, row, items: list[dict], text: str, qa: list[dict],
             continue
         if not known:
             fix = None  # can't tell which earlier field it means: don't guess, stop instead
-        elif fix is not None and not _RESUME_OR_CONTACT.search(norm(label)):
+        elif fix is not None and not _RESUME_OR_CONTACT.search(norm(label)) and not (
+                planned and norm(planned) == norm(fix) and norm(shown_now) in ("", "no response")):
             # an application question: the planner already answered it from the same facts, so the judge disagreeing
-            # is a judgement call for the user, not something to overwrite (Elanco: "Master Required" → "Bachelor's")
+            # is a judgement call for the user, not something to overwrite (Elanco: "Master Required" → "Bachelor's").
+            # Not a disagreement: the planner's own answer that didn't save (HP: the salary box showed "No Response").
             fix = None
         out.append(Problem(label, str(p.get("shown") or ""), str(p.get("expected") or ""), fix, item, nth, "llm"))
     if not out and data.get("ok") is False and not data.get("problems"):  # listed nothing at all (not: all dismissed)
