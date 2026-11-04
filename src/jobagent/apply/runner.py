@@ -426,7 +426,7 @@ def apply_job(session: BrowserSession, row, ctx: ApplyContext) -> Outcome:
 
     try:
         adapter.open(page, row, ctx, forms.snapshot)
-        last_sig, stuck, reloads, empty_waits = None, 0, 0, 0
+        last_sig, stuck, reloads, empty_waits, relooks = None, 0, 0, 0, 0
         while True:  # Workday's "Something went wrong, refresh the page" can break a click mid-step: reload, go on
             try:
                 for step in range(1, MAX_STEPS + 1):
@@ -491,6 +491,13 @@ def apply_job(session: BrowserSession, row, ctx: ApplyContext) -> Outcome:
                     if not sub and reloads < 2 and adapter.recover(page, forms.snapshot(page, adapter.root)):
                         reloads += 1  # Workday's "Something went wrong" page, shown right after filling (Elanco)
                         log.info("   页面出错，刷新后继续")
+                        continue
+                    if not sub and not nxt and relooks < 2:
+                        # the page moved on while being filled (Entrust jumped to Review, still a grey placeholder):
+                        # read it again, so the wait for a page that is still loading applies
+                        relooks += 1
+                        log.info("   没看到「下一步」或「提交」，页面可能还在加载，重新读这一页")
+                        page.wait_for_timeout(3000)
                         continue
                     if not sub:
                         raise (Blocked if adapter.name == "generic" else Failed)("找不到「下一步」或「提交」按钮" + _MANUAL[adapter.name == "generic"])
