@@ -753,3 +753,25 @@ def test_required_my_information_group_ticks_none_instead_of_the_preferred_name(
                        config.ROOT / profile["resumes"]["SDE"]["pdf"])
     assert not got.unknown
     assert {it.field["id"]: it.value for it in got.items} == {"g": [], "h": ["SMS Opt-in"]}
+
+
+def test_privacy_dialog_is_acknowledged_but_never_a_marketing_signup():
+    """Eightfold (PayPal): a "Data Privacy Agreement" dialog covers the form. A plain acknowledgement is accepted; one that
+    also signs up for job-recommendation email (Boston Scientific) goes to the user."""
+    import pytest
+    from jobagent.apply import adapters
+
+    class FakePage:
+        def __init__(self, result):
+            self.result = result
+
+        def evaluate(self, js):
+            assert "privacy" in js and "job (recommendation|alert)" in js
+            return self.result
+
+        def wait_for_timeout(self, ms):
+            pass
+    assert adapters.accept_privacy_notice(FakePage("accepted")) is True
+    assert adapters.accept_privacy_notice(FakePage("")) is False
+    with pytest.raises(adapters.Blocked):
+        adapters.accept_privacy_notice(FakePage("declined"))

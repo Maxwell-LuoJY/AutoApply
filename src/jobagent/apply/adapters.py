@@ -73,6 +73,43 @@ def dismiss_cookies(page: Page, snap: Snapshot) -> None:
             return
 
 
+# A dialog over the form asking to acknowledge the privacy statement (Eightfold sites: PayPal's "Data Privacy Agreement").
+# Ticking a required privacy acknowledgement is what the agent does in forms anyway; a dialog that also signs the user up
+# for job-recommendation or marketing email (Boston Scientific) is the user's call.
+_PRIVACY_JS = """() => {
+  const vis = (e) => { const r = e.getBoundingClientRect(); const s = getComputedStyle(e);
+                       return r.width > 0 && r.height > 0 && s.visibility !== 'hidden' && s.display !== 'none'; };
+  const boxes = document.querySelectorAll('[role="dialog"], [role="alertdialog"], [aria-modal="true"], dialog[open], ' +
+                                          '[class*="modal" i], [class*="dialog" i]');
+  for (const d of boxes) {
+    const t = (d.innerText || '').replace(/\\s+/g, ' ').trim();
+    if (!vis(d) || t.length > 1500 || !/privacy (statement|policy|notice|agreement)|data privacy/i.test(t)) continue;
+    const ok = [...d.querySelectorAll('button')].find((b) => /^(i )?(agree|accept)$/i.test((b.innerText || '').trim()));
+    if (!ok) continue;
+    if (/job (recommendation|alert)|marketing|newsletter|promotion|text message|\\bsms\\b|subscribe/i.test(t)) return 'declined';
+    ok.click();
+    return 'accepted';
+  }
+  return '';
+}"""
+
+
+def accept_privacy_notice(page: Page) -> bool:
+    """Acknowledge a privacy-statement dialog covering the form. True if one was accepted; raises Blocked when the dialog
+    also asks for job-alert / marketing consent."""
+    try:
+        result = page.evaluate(_PRIVACY_JS)
+    except PlaywrightError:
+        return False
+    if result == "declined":
+        raise Blocked("页面弹出同意框，里面还要同意订阅职位推荐 / 营销邮件，agent 不替你同意，请手动投")
+    if result == "accepted":
+        log.info("   确认了隐私声明弹窗（只是确认已阅读隐私声明）")
+        page.wait_for_timeout(1000)
+        return True
+    return False
+
+
 def already_applied_reason(when: str) -> str:
     return f"已经申请过这个岗位{f'（{when}）' if when else ''}：招聘网站显示已申请，不用再投"
 
@@ -129,7 +166,7 @@ class Adapter:
 
     def prepare(self, page: Page, ctx) -> bool:
         """Get the page ready before its fields are read (e.g. add missing entries). True if the page changed."""
-        return False
+        return accept_privacy_notice(page)
 
     def check(self, page: Page, snap: Snapshot, ctx) -> list[str]:
         """Problems that must be fixed before leaving this page (e.g. missing work-experience entries)."""
