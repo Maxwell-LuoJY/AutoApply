@@ -68,7 +68,7 @@ CREATE TABLE IF NOT EXISTS inbox_items (     -- recruiting emails that may need 
     sender      TEXT,
     subject     TEXT,
     company     TEXT,
-    kind        TEXT NOT NULL,               -- assessment | interview | task | rejection | update | completed | other
+    kind        TEXT NOT NULL,               -- applied | assessment | interview | task | rejection | update | completed | other
     action      INTEGER NOT NULL DEFAULT 0,  -- 1 = the applicant has to do something
     deadline    TEXT,                        -- YYYY-MM-DD or ''
     link        TEXT,

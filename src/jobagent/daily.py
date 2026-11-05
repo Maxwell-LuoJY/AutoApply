@@ -84,6 +84,15 @@ def run_daily(db: DB, max_submissions: int | None = None, workers: int | None = 
     return write_report(db, fs, ss, results, emails, started, review, note, brief)
 
 
+def _stats(db: DB) -> list[str]:
+    from . import stats
+    try:
+        return stats.section(db)
+    except Exception as e:  # the stats are a report; never fail the day's report because of them
+        log.warning("累计统计失败：%s", e)
+        return []
+
+
 def _confirmations(since: datetime) -> list[tuple[datetime, str, str]]:
     """(time, sender, subject) of application-confirmation emails since the run started; [] without Gmail access."""
     from .apply.mail import Mailbox
@@ -135,6 +144,7 @@ def write_report(db: DB, fs, ss, results: list, emails: list, started: datetime,
         "",
         *(brief or []),
         *([""] if brief else []),
+        *_stats(db),
         "## 今天这次运行",
         "",
         f"- 新岗位：两个 GitHub 列表共 {src or '0'} 条，**新增 {fs.new} 个**；LLM 筛选 {ss.attempted} 个：{outcome}",

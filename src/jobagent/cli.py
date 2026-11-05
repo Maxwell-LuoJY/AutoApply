@@ -45,6 +45,7 @@ def main(argv: list[str] | None = None) -> None:
     ib.add_argument("action", nargs="?", default="scan", choices=["scan", "done", "list"])
     ib.add_argument("item", nargs="?", type=int, help="item ID for 'done'")
     ib.add_argument("--days", type=int, default=30, help="first scan: how many days back")
+    ib.add_argument("--since", help="read mail from this date (YYYY-MM-DD), e.g. to backfill the cumulative stats")
     sub.add_parser("brief", help="scan the inbox and print today's briefing (also daily_reports/<day>-brief.md)")
     rs = sub.add_parser("resume", help="structured resumes used to fill experience / education / skills")
     rs.add_argument("action", choices=["parse", "show"])
@@ -124,7 +125,10 @@ def main(argv: list[str] | None = None) -> None:
                 print(f"{args.item} → 已完成")
             else:
                 if args.cmd == "brief" or args.action == "scan":
-                    inbox.scan(db, LLM(rps=config.settings()["screening"].get("llm_rps", 1.0)), days=getattr(args, "days", 30))
+                    from datetime import datetime
+                    since = getattr(args, "since", None)
+                    inbox.scan(db, LLM(rps=config.settings()["screening"].get("llm_rps", 1.0)), days=getattr(args, "days", 30),
+                               since=datetime.fromisoformat(since).astimezone() if since else None)
                 if args.cmd == "brief":
                     from datetime import date
                     text = "\n".join([f"# 每日简报 {date.today()}", ""] + inbox.briefing(db)) + "\n"

@@ -775,3 +775,46 @@ def test_privacy_dialog_is_acknowledged_but_never_a_marketing_signup():
     assert adapters.accept_privacy_notice(FakePage("")) is False
     with pytest.raises(adapters.Blocked):
         adapters.accept_privacy_notice(FakePage("declined"))
+
+
+def test_inbox_triage_keeps_confirmations_and_catches_disguised_rejections():
+    from jobagent.inbox import triage
+    assert triage("Thank you for applying to Acme", "jobs@acme.com") == "applied"
+    assert triage("Thank You For Applying!", "x@myworkday.com", "Thanks, we received your application.") == "applied"
+    # Merck / NVIDIA: a rejection under a thank-you subject goes to the LLM
+    assert triage("Thank you from NVIDIA", "hr@nvidia.com", "we have decided not to move forward") == "classify"
+    assert triage("Thank You For Applying!", "x@myworkday.com", "we will be progressing with other candidates") == "classify"
+    # not applications
+    assert triage("Alex, thanks for being a valued member", "LinkedIn Premium <x@linkedin.com>") == "skip"
+    assert triage("Thank you for signing up for Newmont Job Alerts", "jobs@newmont.com") == "skip"
+    assert triage("Your HackerRank assessment invitation", "noreply@hackerrank.com") == "classify"
+
+
+def test_cumulative_stats_count_mail_and_agent_submissions(tmp_path, monkeypatch):
+    from datetime import date
+    from jobagent import config, stats
+    from jobagent.db import DB
+    monkeypatch.setattr(config, "APPLICATIONS_CSV", tmp_path / "applications.csv")
+    (tmp_path / "applications.csv").write_text(
+        "申请时间,公司名称,岗位名称,类别,使用简历,申请链接,来源,状态,失败原因\n"
+        "2026-11-03 21:44,Acme Robotics,ML Intern,DS/AI,AIE,https://a/1,SimplifyJobs,已提交,\n"   # has a confirmation
+        "2026-11-03 22:11,Vizient,Data Intern,DS/AI,AIE,https://v/1,SimplifyJobs,已提交,\n"       # never mailed
+        "2026-11-03 23:00,Beta Corp,SWE Intern,SWE,SDE,https://b/1,手动投递,已提交,\n"           # recorded by you
+        "2026-09-20 10:00,Old Co,SWE Intern,SWE,SDE,https://o/1,SimplifyJobs,已提交,\n", encoding="utf-8-sig")
+    db = DB(tmp_path / "j.db")
+    rows = [("a1", "2026-11-03T21:45:00-06:00", "Acme Robotics <jobs@acme.com>", "Thank you for applying to Acme Robotics", "Acme Robotics", "applied"),
+            ("a2", "2026-11-03T21:46:00-06:00", "Acme Robotics <jobs@acme.com>", "Thank you for applying to Acme Robotics", "Acme Robotics", "applied"),
+            ("a3", "2026-11-03T23:05:00-06:00", "Beta <no-reply@beta.com>", "Application received", "Beta Corp", "applied"),
+            ("a4", "2026-11-04T09:00:00-06:00", "Gamma <hr@gamma.com>", "Thanks for applying", "Gamma", "applied"),
+            ("o1", "2026-11-02T10:00:00-06:00", "HackerRank", "Acme assessment", "Acme Robotics", "assessment"),
+            ("o2", "2026-11-04T10:00:00-06:00", "HackerRank", "Reminder: Acme assessment", "Acme Robotics", "assessment"),
+            ("i1", "2026-11-04T11:00:00-06:00", "Gamma", "Interview invitation", "Gamma", "interview"),
+            ("r1", "2026-11-04T12:00:00-06:00", "Delta", "Update on your application", "Delta", "rejection"),
+            ("r0", "2026-09-25T12:00:00-06:00", "Old", "Update", "Old Co", "rejection")]
+    db.conn.executemany("insert into inbox_items(msg_id, received, sender, subject, company, kind, status) values(?,?,?,?,?,?,'closed')", rows)
+    db.commit()
+    since = date(2026, 10, 1)
+    assert stats.cumulative(db, since) == {"total": 4, "agent": 2, "oa": 1, "interview": 1, "rejection": 1}
+    # the confirmation sent twice counts once; Vizient's submission without a confirmation still counts
+    assert stats.cumulative(db, since, before=date(2026, 11, 4)) == {"total": 3, "agent": 2, "oa": 1, "interview": 0,
+                                                                     "rejection": 0}

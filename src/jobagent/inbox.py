@@ -25,9 +25,9 @@ from .db import DB
 
 log = logging.getLogger("jobagent")
 
-KINDS = ("assessment", "interview", "task", "rejection", "update", "completed", "other")
-LABEL = {"assessment": "测评/OA", "interview": "面试邀请", "task": "待办", "rejection": "拒信", "update": "进度更新",
-         "completed": "已完成", "other": "其他"}
+KINDS = ("applied", "assessment", "interview", "task", "rejection", "update", "completed", "other")
+LABEL = {"applied": "申请确认", "assessment": "测评/OA", "interview": "面试邀请", "task": "待办", "rejection": "拒信",
+         "update": "进度更新", "completed": "已完成", "other": "其他"}
 
 # Header pre-filter: only these go to the LLM. Confirmations and our own code / activation mails are handled elsewhere.
 _CANDIDATE = re.compile(
@@ -45,9 +45,30 @@ _CONFIRM = re.compile(r"(?i)thank(s| you)|received|submitted|we'?ve got it|got i
                       r"confirmation|you've applied|your application (to|for|with)")
 _NOT_CONFIRM = re.compile(r"(?i)update|status|unfortunately|complete your|next step|task|action required|final step|"
                           r"invit|security code|verify|interview|assessment|screening|feedback matters|survey|experience")
+# "thank you" mail that is not an application: memberships, job alerts, talent-community sign-ups (Newmont)
+_NOT_APPLICATION = re.compile(r"(?i)linkedin|valued member|job alerts?|signing up|signed up|sign up for|talent (community|network)|"
+                              r"newsletter|subscri|account (has been )?(created|activated)|verify your|welcome to")
+# a rejection under a thank-you subject ("Thank you from NVIDIA", Merck's "Thank You For Applying!"): let the LLM decide
+_REJECT_BODY = re.compile(r"(?i)not (to )?(be )?mov(e|ing) forward|(pursue|proceed|progressing|move forward) with other|"
+                          r"other candidates|regret to inform|not been selected|will not be (moving|proceeding)|"
+                          r"no longer (under consideration|being considered)|position has been filled|decided not to")
+
+
+def triage(subject: str, sender: str, body: str | None = None) -> str:
+    """What to do with an email: "skip", "applied" (a plain application confirmation, stored without the LLM) or
+    "classify" (the LLM decides). `body` is needed only for confirmation-like subjects."""
+    if _NOT_CANDIDATE.search(subject + " " + sender):
+        return "skip"
+    if _CONFIRM.search(subject) and not _NOT_CONFIRM.search(subject):
+        if _NOT_APPLICATION.search(subject + " " + sender):
+            return "skip"
+        return "classify" if body is not None and _REJECT_BODY.search(body) else "applied"
+    if _CANDIDATE.search(subject) or (_CANDIDATE_SENDER.search(sender) and not _CONFIRM.search(subject)):
+        return "classify"
+    return "skip"
 
 PROMPT = """You sort a job applicant's recruiting emails. For each email decide:
-- kind: "assessment" (online assessment / coding test / HireVue or video interview / game or skills test, invitation or
+- kind: "applied" (only confirms that an application was received), "assessment" (online assessment / coding test / HireVue or video interview / game or skills test, invitation or
   reminder), "interview" (interview invitation, scheduling request, recruiter call, coffee chat), "task" (the applicant
   must do something to keep the application going: complete or finish the application, confirm identity, provide
   documents, fill a required questionnaire; NOT voluntary self-identification or surveys), "rejection", "update"
@@ -105,19 +126,20 @@ def fetch(mailbox: Mailbox, since: datetime) -> list[dict]:
             if sent < since:
                 continue
             subject, sender = _decode(hdr["Subject"]), _decode(hdr["From"])
-            if _NOT_CANDIDATE.search(subject + " " + sender):
+            if triage(subject, sender) == "skip":
                 continue
-            if not (_CANDIDATE.search(subject) or _CANDIDATE_SENDER.search(sender) and not _CONFIRM.search(subject)):
-                continue
-            if _CONFIRM.search(subject) and not _NOT_CONFIRM.search(subject):
-                continue  # a plain "thank you for applying": counted by confirmations(), not a task
             _, full = m.fetch(num, "(BODY.PEEK[])")
             msg = email.message_from_bytes(full[0][1])
             body = _body_text(msg)
             text = re.sub(r"https?://\S+", "", body)
+            preset = None
+            if triage(subject, sender, body) == "applied":  # counted in the cumulative stats; nothing to do
+                preset = {"kind": "applied", "company": sender_company(sender, subject), "action": False,
+                          "deadline": "", "link": "", "summary": ""}
             out.append({"msg_id": (hdr["Message-ID"] or f"{sender}|{subject}|{sent.isoformat()}").strip(),
                         "received": sent.astimezone().isoformat(timespec="seconds"), "sender": sender,
-                        "subject": subject, "text": re.sub(r"\s+", " ", text)[:1500], "links": _links(body)})
+                        "subject": subject, "text": re.sub(r"\s+", " ", text)[:1500], "links": _links(body),
+                        "preset": preset})
     return out
 
 
@@ -147,20 +169,26 @@ def _company_key(name: str) -> str:
     return words[0] if words else ""
 
 
-def scan(db: DB, llm, days: int = 30) -> dict[str, int]:
-    """Read emails since the last scan (first time: `days` back), store recruiting ones, close what's done."""
+def scan(db: DB, llm, days: int = 30, since: datetime | None = None) -> dict[str, int]:
+    """Read emails since the last scan (first time: `days` back), store recruiting ones, close what's done.
+    `since`: read from that time instead (a one-time backfill); the last-scan mark is left as it is."""
     mailbox = Mailbox.from_env(config.profile()["contact"]["email"])
     if mailbox is None:
         log.warning("没有配置 Gmail 应用密码，跳过邮箱扫描")
         return {}
     last = db.meta("inbox_last_scan")
-    since = datetime.fromisoformat(last) - timedelta(hours=1) if last else datetime.now(timezone.utc) - timedelta(days=days)
+    backfill = since is not None
+    if since is None:
+        since = datetime.fromisoformat(last) - timedelta(hours=1) if last else datetime.now(timezone.utc) - timedelta(days=days)
     started = datetime.now(timezone.utc)
     known = {r[0] for r in db.conn.execute("select msg_id from inbox_items")}
     mails = [m for m in fetch(mailbox, since) if m["msg_id"] not in known]
-    verdicts = classify(llm, mails) if mails else {}
+    todo = [m for m in mails if not m.get("preset")]
+    verdicts = classify(llm, todo) if todo else {}
+    verdicts.update({m["msg_id"]: m["preset"] for m in mails if m.get("preset")})
     counts = store(db, mails, verdicts)
-    db.meta("inbox_last_scan", started.isoformat())
+    if not backfill:
+        db.meta("inbox_last_scan", started.isoformat())
     log.info("邮箱扫描：新邮件 %d 封（%s）", len(mails), "，".join(f"{LABEL[k]} {n}" for k, n in counts.items()) or "无")
     return counts
 
@@ -242,6 +270,27 @@ def confirmations(day: date | None = None) -> list[tuple[datetime, str, str]]:
     return sorted(out)
 
 
+def applied_mails(db: DB, day: date | None = None, since: date | None = None) -> list[tuple[datetime, str, str]]:
+    """(time, sender, subject) of stored application confirmations on `day` (or since `since`), one per application:
+    the same message sent twice within a few minutes counts once."""
+    if day is not None:
+        rows = db.conn.execute("select received, sender, subject from inbox_items where kind='applied' and "
+                               "substr(received, 1, 10) = ? order by received", (day.isoformat(),)).fetchall()
+    else:
+        rows = db.conn.execute("select received, sender, subject from inbox_items where kind='applied' and "
+                               "substr(received, 1, 10) >= ? order by received", ((since or date.min).isoformat(),)).fetchall()
+    out: list[tuple[datetime, str, str]] = []
+    last: dict[tuple[str, str], datetime] = {}
+    for received, sender, subject in rows:
+        t = datetime.fromisoformat(received)
+        key = (re.sub(r"\W+", "", (sender or "").lower()), re.sub(r"\W+", "", (subject or "").lower()))
+        if key in last and (t - last[key]).total_seconds() < 180:
+            continue
+        last[key] = t
+        out.append((t, sender or "", subject or ""))
+    return out
+
+
 def _tenant_companies(db: DB) -> dict[str, str]:
     """Workday tenant (ttc in ttc.wd5.myworkdayjobs.com) → company name, from the jobs we know."""
     from urllib.parse import urlsplit
@@ -273,7 +322,7 @@ def sender_company(sender: str, subject: str, tenants: dict[str, str] | None = N
 def briefing(db: DB, day: date | None = None) -> list[str]:
     """Markdown for the daily briefing: today's applications (by confirmation email) and what still needs doing."""
     day = day or date.today()
-    mails = confirmations(day)
+    mails = applied_mails(db, day)
     agent = db.conn.execute("select count(distinct job_id) from attempts where status='submitted' and mode='submit' "
                             "and substr(at, 1, 10) = ?", (day.isoformat(),)).fetchone()[0]
     items = open_items(db)
