@@ -170,7 +170,8 @@ class Adapter:
 
     def check(self, page: Page, snap: Snapshot, ctx) -> list[str]:
         """Problems that must be fixed before leaving this page (e.g. missing work-experience entries)."""
-        return []
+        # PayPal's privacy dialog is hidden until the form is touched, then covers it: accept it and fill the page again
+        return ["隐私声明弹窗挡住了表单，确认后重填这一页"] if accept_privacy_notice(page) else []
 
     def check_before_submit(self, page: Page, ctx) -> list[str]:
         """Last look at the final page before Submit; any problem stops the submission."""

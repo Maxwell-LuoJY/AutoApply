@@ -147,8 +147,10 @@ def _fill_step(page: Page, adapter: Adapter, snap: forms.Snapshot, row, ctx: App
         sig = forms.page_signature(page)
         for it in sorted(plan.items, key=lambda it: it.field["kind"] != "file"):
             if forms.page_signature(page) != sig:
-                log.info("   页面在填写途中跳到了下一步，剩下的字段留给下一步处理")
-                return
+                if not forms.still_on_page(page, it.field):
+                    log.info("   页面在填写途中跳到了下一步，剩下的字段留给下一步处理")
+                    return
+                sig = forms.page_signature(page)  # the same form, redrawn: keep filling
             f = it.field
             if f["kind"] == "file" and _uploaded(page, resolve_file(ctx.profile, row, str(it.value), f.get("accept", ""))):
                 continue  # already uploaded; uploading again would attach a second copy

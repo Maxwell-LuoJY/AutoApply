@@ -610,6 +610,15 @@ def page_signature(page: Page) -> str:
         return ""
 
 
+def still_on_page(page: Page, f: dict) -> bool:
+    """The field we are about to fill is still there: the page was redrawn, not left (Eightfold's sidebar marks the
+    section in view as the current step, so the page signature changes as the agent works down one long form)."""
+    try:
+        return _loc(page, f["id"]).count() > 0
+    except PlaywrightError:
+        return False
+
+
 def is_empty(f: dict) -> bool:
     v = f.get("value")
     return v in (None, "", [], False)
