@@ -129,7 +129,7 @@ among its options (e.g. graduation "May/June" when the exact month isn't offered
 "Artificial Intelligence" isn't offered); any "how did you hear about us" answer; optional fields left blank; a GPA left
 blank where the facts say it stays blank (intentional); a phone type meaning a mobile phone ("Home Cellular", "Cell",
 "Personal Cell") for the applicant's mobile; "I have a preferred name" left unchecked / No (intentional: the
-legal name is used); a school shown as "Other" (the employer's list doesn't have it); skills lists (not checked); an
+legal name is used); a school shown as "Other" / "Not Found" / "Not Listed" (the employer's list doesn't have it); skills lists (not checked); an
 empty optional Websites, Languages or Skills section ("No Response"); the wording of essays and free-text answers;
 anything consistent with the facts.{middle}
 When unsure, it is not a problem.

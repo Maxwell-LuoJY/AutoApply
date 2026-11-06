@@ -265,14 +265,19 @@ def _search_terms(value: str) -> list[str]:
     return list(dict.fromkeys(t for t in terms if t))
 
 
+# What a school list calls "my school isn't here": usually "Other"; Eversource asks for "Not Found"
+UNLISTED_SCHOOL = ["Other", "Not Found", "Not Listed", "School Not Listed", "Other - Not Listed"]
+
+
 def _fill_combobox(page: Page, f: dict, value: str) -> str | None:
     """Pick an option in a custom dropdown / type-ahead. A school must match by name, else "Other" (if offered)."""
     school = bool(_SCHOOL_LABEL.search(f.get("label") or ""))
     err = _fill_combobox_once(page, f, value, school)
-    if err and school and norm(value) != "other":
-        page.keyboard.press("Escape")
-        if _fill_combobox_once(page, f, "Other", True) is None:
-            return None
+    if err and school and norm(value) not in {norm(u) for u in UNLISTED_SCHOOL}:
+        for fallback in UNLISTED_SCHOOL:
+            page.keyboard.press("Escape")
+            if _fill_combobox_once(page, f, fallback, True) is None:
+                return None
     return err
 
 
@@ -390,11 +395,12 @@ def _fill_prompt(page: Page, f: dict, value: str, strict: bool = False) -> str |
     if not strict:
         _clear_wrong_pills(page, f, value)
     err = _fill_prompt_once(page, f, value, strict, school)
-    if err and school and norm(value) != "other":
-        page.keyboard.press("Escape")
-        page.wait_for_timeout(400)
-        if _fill_prompt_once(page, f, "Other", False, True) is None:
-            return None
+    if err and school and norm(value) not in {norm(u) for u in UNLISTED_SCHOOL}:
+        for fallback in UNLISTED_SCHOOL:
+            page.keyboard.press("Escape")
+            page.wait_for_timeout(400)
+            if _fill_prompt_once(page, f, fallback, False, True) is None:
+                return None
     return err
 
 

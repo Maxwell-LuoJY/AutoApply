@@ -818,3 +818,11 @@ def test_cumulative_stats_count_mail_and_agent_submissions(tmp_path, monkeypatch
     # the confirmation sent twice counts once; Vizient's submission without a confirmation still counts
     assert stats.cumulative(db, since, before=date(2026, 11, 4)) == {"total": 3, "agent": 2, "oa": 1, "interview": 0,
                                                                      "rejection": 0}
+
+
+def test_unlisted_school_names_agree():
+    """Eversource: "If you are unable to find your school, please enter 'Not Found'": the fill and the entry check must
+    know the same names for an unlisted school."""
+    from jobagent.apply import adapters, forms
+    assert {adapters.norm_other(u) for u in forms.UNLISTED_SCHOOL} == adapters._UNLISTED
+    assert forms.UNLISTED_SCHOOL[0] == "Other"  # still the first choice

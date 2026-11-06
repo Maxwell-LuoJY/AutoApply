@@ -400,7 +400,7 @@ def entry_problems(snap: Snapshot, ctx) -> list[str]:
             on_page["edu"].append(bare(f.get("value")))
         elif re.match(r"(?i)^work experience \d+ — (company|company name|employer)\b", label):
             on_page["work"].append(bare(f.get("value")))
-    others = sum(norm_other(v) == "other" for v in on_page["edu"])
+    others = sum(norm_other(v) in _UNLISTED for v in on_page["edu"])
     for school in (e.get("school", "") for e in data.get("education") or []):
         if on_page["edu"] and not best_option(bare(school), [v for v in on_page["edu"] if v], fuzzy=False):
             if others:
@@ -434,6 +434,9 @@ def sections_on_page(snap: Snapshot) -> set[str]:
 
 def norm_other(v: str) -> str:
     return re.sub(r"[^a-z]+", "", v.lower())
+
+
+_UNLISTED = {"other", "notfound", "notlisted", "schoolnotlisted", "othernotlisted"}  # forms.UNLISTED_SCHOOL, normalized
 
 
 class Workday(Adapter):
