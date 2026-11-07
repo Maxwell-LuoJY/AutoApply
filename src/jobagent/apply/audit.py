@@ -195,9 +195,9 @@ def judge(llm, profile: dict, row, items: list[dict], text: str, qa: list[dict],
         item = p.get("item") if isinstance(p.get("item"), int) and 0 <= p["item"] < len(items) else None
         label, nth = (items[item].get("label", ""), items[item].get("nth")) if item is not None else (str(p.get("field")), None)
         known = item is not None or not text or label in earlier
-        planned = None
+        planned, earlier_opts = None, []
         if item is None and label in earlier:
-            label, nth, planned, _ = earlier[label]
+            label, nth, planned, earlier_opts = earlier[label]
         fix = p.get("fix")
         f = items[item] if item is not None else {"kind": _kind(qa, label), "label": label, "options": []}
         clear = fix == "" and f["kind"] in forms.TEXT_KINDS  # e.g. a middle name the site's parser invented
@@ -213,6 +213,9 @@ def judge(llm, profile: dict, row, items: list[dict], text: str, qa: list[dict],
         words = {w for w in norm(fix or "").split() if len(w) > 3}
         if words and re.search(r"field of study|major|discipline", norm(label)) and words <= set(norm(shown_now).split()):
             continue  # "Artificial Intelligence and Robotics" already is the closest the list offers
+        opts = f.get("options") or earlier_opts
+        if fix and re.search(r"field of study|major|discipline", norm(label)) and opts and not best_option(fix, opts, fuzzy=False):
+            continue  # the list doesn't offer it (Greenhouse's Discipline has no "Artificial Intelligence"): the pick stands
         if re.search(r"\bdegree\b", norm(label)) and fix and (level := answers._level_of(shown_now)) \
                 and answers._level_of(fix) == level and answers._degree_fit(shown_now, level) >= 1 \
                 and (answers._degree_fit(shown_now, level) >= answers._degree_fit(fix, level)

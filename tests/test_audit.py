@@ -484,3 +484,15 @@ def test_an_answer_that_did_not_save_is_entered_again_but_a_disagreement_is_not(
     assert judge("No Response", "30", "30") == ["30"]
     assert judge("25", "30", "25") == [None]
     assert judge("No Response", "40", "30") == [None]
+
+
+def test_major_the_list_does_not_offer_is_not_a_problem():
+    """Greenhouse (Deeplocal, NYT): Discipline lists no "Artificial Intelligence"; "Computer Science" is the closest pick,
+    so the judge asking for the missing option must not stop the job. A major the list does offer is still corrected."""
+    def judge(options, fix):
+        llm = SimpleNamespace(json_chat=lambda system, user, max_tokens: {"ok": False, "problems": [
+            {"item": 0, "field": "Education 2 — Discipline", "shown": "Computer Science", "expected": fix, "fix": fix}]})
+        item = {"kind": "select", "label": "Education 2 — Discipline", "value": "Computer Science", "options": options, "nth": 0}
+        return [p.fix for p in audit.judge(llm, config.profile(), ROW, [item], "", [])]
+    assert judge(["Computer Science", "Engineering", "Mathematics"], "Artificial Intelligence") == []
+    assert judge(["Computer Science", "Artificial Intelligence", "Engineering"], "Artificial Intelligence") == ["Artificial Intelligence"]
