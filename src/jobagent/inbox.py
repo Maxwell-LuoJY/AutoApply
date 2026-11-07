@@ -47,7 +47,8 @@ _NOT_CONFIRM = re.compile(r"(?i)update|status|unfortunately|complete your|next s
                           r"invit|security code|verify|interview|assessment|screening|feedback matters|survey|experience")
 # "thank you" mail that is not an application: memberships, job alerts, talent-community sign-ups (Newmont)
 _NOT_APPLICATION = re.compile(r"(?i)linkedin|valued member|job alerts?|signing up|signed up|sign up for|talent (community|network)|"
-                              r"newsletter|subscri|account (has been )?(created|activated)|verify your|welcome to")
+                              r"newsletter|subscri|account (has been )?(created|activated)|verify your|welcome to|"
+                              r"payment|receipt|your order|invoice|donation|purchase|bursar")  # "Thank you for your payment"
 # a rejection under a thank-you subject ("Thank you from NVIDIA", Merck's "Thank You For Applying!"): let the LLM decide
 _REJECT_BODY = re.compile(r"(?i)not (to )?(be )?mov(e|ing) forward|(pursue|proceed|progressing|move forward) with other|"
                           r"other candidates|regret to inform|not been selected|will not be (moving|proceeding)|"

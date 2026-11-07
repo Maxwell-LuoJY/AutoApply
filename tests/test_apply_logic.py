@@ -864,3 +864,9 @@ def test_month_only_dates_land_mid_month_and_language_without_options():
     from jobagent.apply.forms import iso_date
     assert iso_date("03/2028", "date") == "2028-03-15" and iso_date("05/01/2027", "date") == "2027-05-01"
     assert first_offered("English – Fluent; Chinese (Mandarin) – Native", []) == "English"
+
+
+def test_payment_receipts_are_not_application_confirmations():
+    from jobagent.inbox import triage
+    assert triage("Thank you for your payment", "Bursar <bursaremail@school.edu>") == "skip"
+    assert triage("Thank you for your order", "shop@example.com") == "skip"
