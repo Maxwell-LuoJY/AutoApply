@@ -496,3 +496,10 @@ def test_major_the_list_does_not_offer_is_not_a_problem():
         return [p.fix for p in audit.judge(llm, config.profile(), ROW, [item], "", [])]
     assert judge(["Computer Science", "Engineering", "Mathematics"], "Artificial Intelligence") == []
     assert judge(["Computer Science", "Artificial Intelligence", "Engineering"], "Artificial Intelligence") == ["Artificial Intelligence"]
+
+
+def test_empty_optional_section_is_not_a_problem():
+    """UPS: the judge wanted the GitHub link in an empty optional Websites section."""
+    llm = SimpleNamespace(json_chat=lambda system, user, max_tokens: {"ok": False, "problems": [
+        {"item": None, "field": "Websites", "shown": "No Response", "expected": "https://github.com/x", "fix": "https://github.com/x"}]})
+    assert audit.judge(llm, config.profile(), ROW, [], "Review", [], [{"label": "Websites", "kind": "text", "nth": 0, "value": ""}]) == []

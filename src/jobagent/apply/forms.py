@@ -545,11 +545,35 @@ def _fill_date_parts(page: Page, f: dict, value) -> str | None:
     return None
 
 
+_MONTHS = {m: i for i, m in enumerate(("jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"), 1)}
+
+
+def iso_date(value: str, kind: str) -> str | None:
+    """A date as a <input type="date"> ("2028-03-01") or type="month" ("2028-03") wants it. The planner writes
+    "03/2028" or "March 2028"; those inputs reject anything but ISO (Notion's Graduation Date stayed empty)."""
+    v = str(value).strip()
+    if (m := re.fullmatch(r"(\d{4})-(\d{1,2})(?:-(\d{1,2}))?", v)):
+        year, month, day = m.groups()
+    elif (m := re.fullmatch(r"(\d{1,2})/(\d{1,2})/(\d{4})", v)):
+        month, day, year = m.groups()
+    elif (m := re.fullmatch(r"(\d{1,2})/(\d{4})", v)):
+        (month, year), day = m.groups(), None
+    elif (m := re.fullmatch(r"(?i)([a-z]{3})[a-z]*\.? (\d{4})", v)) and m.group(1).lower() in _MONTHS:
+        month, year, day = str(_MONTHS[m.group(1).lower()]), m.group(2), None
+    else:
+        return None
+    if not 1 <= int(month) <= 12:
+        return None
+    return f"{year}-{int(month):02d}" if kind == "month" else f"{year}-{int(month):02d}-{int(day or 1):02d}"
+
+
 def fill_field(page: Page, f: dict, value, resolve_file: Callable[[str], Path | None]) -> str | None:
     """Set one field. Returns an error message (instead of raising) when this field can't be set."""
     kind, loc = f["kind"], _loc(page, f["id"])
     try:
         if kind in TEXT_KINDS:
+            if kind in ("date", "month"):
+                value = iso_date(str(value), kind) or value
             loc.scroll_into_view_if_needed(timeout=5000)
             loc.fill(str(value), timeout=8000)
         elif kind == "select":

@@ -826,3 +826,21 @@ def test_unlisted_school_names_agree():
     from jobagent.apply import adapters, forms
     assert {adapters.norm_other(u) for u in forms.UNLISTED_SCHOOL} == adapters._UNLISTED
     assert forms.UNLISTED_SCHOOL[0] == "Other"  # still the first choice
+
+
+def test_date_and_month_inputs_get_iso_values():
+    """Notion: "03/2028" in a type=month input is rejected and the required Graduation Date stays empty."""
+    from jobagent.apply.forms import iso_date
+    assert iso_date("03/2028", "month") == "2028-03" and iso_date("03/2028", "date") == "2028-03-01"
+    assert iso_date("March 2028", "month") == "2028-03" and iso_date("05/01/2027", "date") == "2027-05-01"
+    assert iso_date("2028-03", "date") == "2028-03-01"
+    assert iso_date("13/2028", "month") is None and iso_date("soon", "date") is None
+
+
+def test_one_language_box_takes_the_first_offered_language():
+    """answers.yaml lists several languages; a single "Language" box takes the first one the list offers."""
+    from jobagent.apply.answers import first_offered
+    answer = "English – Fluent; Chinese (Mandarin) – Native（只能填一种语言时选 English）"
+    assert first_offered(answer, ["Select One", "English", "Spanish"]) == "English"
+    assert first_offered("Chinese (Mandarin) – Native; English – Fluent", ["Mandarin", "English"]) == "English"
+    assert first_offered("Chinese", ["Select One", "English", "Spanish"]) is None

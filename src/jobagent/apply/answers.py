@@ -173,6 +173,15 @@ def _docx_text(path: str) -> str:
     return "\n".join(lines)
 
 
+def first_offered(text: str, options: list[str]) -> str | None:
+    """The first item of a list answer ("English – Fluent; Chinese (Mandarin) – Native") that is among the options."""
+    for part in re.split(r"[;；,，/]|\bor\b", text or ""):
+        core = re.sub(r"\(.*?\)|（.*?）|[–—-].*$", "", part).strip()
+        if core and (hit := best_option(core, options, fuzzy=False)):
+            return hit
+    return None
+
+
 @lru_cache
 def extra_answers() -> tuple[tuple[str, str], ...]:
     path = config.CONFIG_DIR / "answers.yaml"
@@ -591,6 +600,11 @@ def plan(fields: list[dict], llm: LLM, profile: dict, row, resume_pdf: Path, cac
                 first = neutral or (real[0] if real else None)
                 if first:
                     value, basis = first, "default"  # unimportant question: take the first option
+            if f["kind"] in CHOICE_KINDS and norm(label) == "language" and f.get("options"):
+                # one language box: the first language of your answer the list offers (answers.yaml: "English –
+                # Fluent; Chinese … （只能填一种语言时选 English）"; T-Mobile lists only English / Spanish)
+                rule = next((a for m, a in extra_answers() if re.search(m, label, re.I)), None)
+                value = first_offered(rule or str(value), f["options"]) or value
             if f["kind"] == "checkbox" and isinstance(value, list):
                 # never tick "I have a preferred name" (see _deterministic): in LabCorp's and Marriott's "My
                 # Information" group (with "SMS Opt-in") the planner ticked it, and the legal name went into the
