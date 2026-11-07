@@ -174,9 +174,12 @@ def _docx_text(path: str) -> str:
 
 
 def first_offered(text: str, options: list[str]) -> str | None:
-    """The first item of a list answer ("English – Fluent; Chinese (Mandarin) – Native") that is among the options."""
+    """The first item of a list answer ("English – Fluent; Chinese (Mandarin) – Native") that is among the options;
+    with no options known (a Workday search box: Great American), simply the first item."""
     for part in re.split(r"[;；,，/]|\bor\b", text or ""):
         core = re.sub(r"\(.*?\)|（.*?）|[–—-].*$", "", part).strip()
+        if core and not options:
+            return core
         if core and (hit := best_option(core, options, fuzzy=False)):
             return hit
     return None
@@ -362,7 +365,14 @@ _STRONG_OTHER = re.compile(r"\b(medicine|surgery|laws?|llb|llm|nursing|divinity|
 _WEAK_OTHER = re.compile(r"\b(arts?|ba|mba|ma|business|administration)\b")  # fine next to "Science": "Arts or Science"
 _DEGREE_FILLER = {"degree", "or", "equivalent", "in", "progress", "s", "university", "the", "a", "program", "programme", "of",
                   "and", "current", "currently", "pursuing", "master", "masters", "bachelor", "bachelors", "m", "b", "ms",
-                  "bs", "msc", "bsc"}
+                  "bs", "msc", "bsc", "graduate", "graduated", "completed", "complete", "conferred", "earned", "obtained"}
+_IN_PROGRESS = re.compile(r"(?i)in progress|pursuing|\bcurrent(ly)?\b|expected|enrolled")
+_COMPLETED = re.compile(r"(?i)\b(graduated?|completed?|conferred|earned|obtained)\b")
+
+
+def _status_mismatch(option: str, done: bool) -> bool:
+    """NYT lists "Bachelors Graduate" and "Bachelors degree in progress": a finished B.Eng. must not take the second."""
+    return bool(_IN_PROGRESS.search(option)) if done else bool(_COMPLETED.search(option) and not _IN_PROGRESS.search(option))
 
 
 def _degree_fit(option: str, level: str | None) -> int:
@@ -408,8 +418,10 @@ def _education_by_school(fields: list[dict], row) -> dict[str, Item]:
                 rf"{re.escape(norm(exact[0]))}( [a-z]{{1,5}}( [a-z]{{1,5}})*)?", norm(o)) and
                 (norm(o) == norm(exact[0]) or "(" in o)), None)
             level, words = e.get("level"), resume_fill._DEGREE_WORDS.get(e.get("level"), []) + [e.get("degree", "")]
-            have = _degree_fit(value, level) if value else -1
-            fits = {o: _degree_fit(o, level) for o in f.get("options") or [] if o and not re.match(r"(?i)^select", o)}
+            done = str(e.get("end") or "9999") < date.today().strftime("%Y-%m")  # the degree's end date has passed
+            fit = lambda o: (n := _degree_fit(o, level)) - (n >= 1 and _status_mismatch(o, done))  # noqa: E731
+            have = fit(value) if value else -1
+            fits = {o: fit(o) for o in f.get("options") or [] if o and not re.match(r"(?i)^select", o)}
             best = max(fits.values(), default=-1)
             if exact_opt:
                 pick = exact_opt if norm(exact_opt) != norm(value) else None
@@ -600,11 +612,11 @@ def plan(fields: list[dict], llm: LLM, profile: dict, row, resume_pdf: Path, cac
                 first = neutral or (real[0] if real else None)
                 if first:
                     value, basis = first, "default"  # unimportant question: take the first option
-            if f["kind"] in CHOICE_KINDS and norm(label) == "language" and f.get("options"):
+            if f["kind"] in CHOICE_KINDS and norm(label) == "language":
                 # one language box: the first language of your answer the list offers (answers.yaml: "English –
                 # Fluent; Chinese … （只能填一种语言时选 English）"; T-Mobile lists only English / Spanish)
                 rule = next((a for m, a in extra_answers() if re.search(m, label, re.I)), None)
-                value = first_offered(rule or str(value), f["options"]) or value
+                value = first_offered(rule or str(value), f.get("options") or []) or value
             if f["kind"] == "checkbox" and isinstance(value, list):
                 # never tick "I have a preferred name" (see _deterministic): in LabCorp's and Marriott's "My
                 # Information" group (with "SMS Opt-in") the planner ticked it, and the legal name went into the

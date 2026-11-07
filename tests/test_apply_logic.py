@@ -831,9 +831,9 @@ def test_unlisted_school_names_agree():
 def test_date_and_month_inputs_get_iso_values():
     """Notion: "03/2028" in a type=month input is rejected and the required Graduation Date stays empty."""
     from jobagent.apply.forms import iso_date
-    assert iso_date("03/2028", "month") == "2028-03" and iso_date("03/2028", "date") == "2028-03-01"
+    assert iso_date("03/2028", "month") == "2028-03" and iso_date("03/2028", "date") == "2028-03-15"
     assert iso_date("March 2028", "month") == "2028-03" and iso_date("05/01/2027", "date") == "2027-05-01"
-    assert iso_date("2028-03", "date") == "2028-03-01"
+    assert iso_date("2028-03", "date") == "2028-03-15"
     assert iso_date("13/2028", "month") is None and iso_date("soon", "date") is None
 
 
@@ -844,3 +844,23 @@ def test_one_language_box_takes_the_first_offered_language():
     assert first_offered(answer, ["Select One", "English", "Spanish"]) == "English"
     assert first_offered("Chinese (Mandarin) – Native; English – Fluent", ["Mandarin", "English"]) == "English"
     assert first_offered("Chinese", ["Select One", "English", "Spanish"]) is None
+
+
+def test_finished_degree_takes_the_graduate_option(monkeypatch):
+    """NYT: "Bachelors Graduate" / "Bachelors degree in progress": the B.Eng. ended 2026-07, the M.S. is under way."""
+    from jobagent.apply import answers
+    opts = ["Select One", "Bachelors Graduate", "Bachelors degree in progress", "Masters Graduate", "Masters degree in progress"]
+    for school, end, level, want in (("Example Tech U", "2026-07", "bachelor", "Bachelors Graduate"),
+                                     ("Example Grad U", "2999-03", "master", "Masters degree in progress")):
+        data = {"education": [{"school": school, "degree": "x", "level": level, "end": end}]}
+        monkeypatch.setattr(answers, "structured_resume", lambda kind, d=data: d)
+        fields = [{"id": "s", "kind": "combobox", "label": "Education 1 — School", "value": school, "options": []},
+                  {"id": "d", "kind": "select", "label": "Education 1 — Degree", "value": "", "options": opts}]
+        assert answers._education_by_school(fields, {"resume": "SDE"})["d"].value == want
+
+
+def test_month_only_dates_land_mid_month_and_language_without_options():
+    from jobagent.apply.answers import first_offered
+    from jobagent.apply.forms import iso_date
+    assert iso_date("03/2028", "date") == "2028-03-15" and iso_date("05/01/2027", "date") == "2027-05-01"
+    assert first_offered("English – Fluent; Chinese (Mandarin) – Native", []) == "English"

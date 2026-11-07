@@ -216,6 +216,11 @@ def judge(llm, profile: dict, row, items: list[dict], text: str, qa: list[dict],
         if re.fullmatch(r"(websites?|languages?|skills|certifications?|licenses and certifications|social network urls)",
                         norm(label)) and norm(shown_now) in ("", "no response"):
             continue  # an empty optional section (UPS: "Websites: No Response"); a required one fails missing_required
+        if re.search(r"field of study|major|discipline", norm(label)) and fix and planned \
+                and norm(planned) == norm(shown_now) and _COMPUTING.search(shown_now) and _COMPUTING.search(fix):
+            # the fill itself chose "Computer Science" for the B.Eng. in AI as the list's closest; going back to change
+            # it lost an education entry on Workday three times (UPS, 2026-11-06). A pick that didn't stick is still fixed.
+            continue
         opts = f.get("options") or earlier_opts
         if fix and re.search(r"field of study|major|discipline", norm(label)) and opts and not best_option(fix, opts, fuzzy=False):
             continue  # the list doesn't offer it (Greenhouse's Discipline has no "Artificial Intelligence"): the pick stands
@@ -245,6 +250,10 @@ def judge(llm, profile: dict, row, items: list[dict], text: str, qa: list[dict],
 _RESUME_OR_CONTACT = re.compile(
     r"^(work experience|education) \d+ |^field of study$|^(legal |first |last |middle |preferred |full )?name$|"
     r"^(first|last|middle|given|family) name|^e ?mail|phone|^address|^city$|^state|^postal|^zip|^country|^county$|linkedin|github")
+
+
+_COMPUTING = re.compile(r"(?i)computer|computing|artificial intelligence|machine learning|data science|software|"
+                        r"robotics|information (science|technology|systems)")
 
 
 def _eeo_agrees(label: str, value: str, profile: dict) -> bool:

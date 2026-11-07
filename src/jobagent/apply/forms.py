@@ -564,7 +564,9 @@ def iso_date(value: str, kind: str) -> str | None:
         return None
     if not 1 <= int(month) <= 12:
         return None
-    return f"{year}-{int(month):02d}" if kind == "month" else f"{year}-{int(month):02d}-{int(day or 1):02d}"
+    # no day given: the 15th, so a site that shifts midnight to the previous day (Notion showed 02/29/2028 for
+    # 2028-03-01) still shows the right month
+    return f"{year}-{int(month):02d}" if kind == "month" else f"{year}-{int(month):02d}-{int(day or 15):02d}"
 
 
 def fill_field(page: Page, f: dict, value, resolve_file: Callable[[str], Path | None]) -> str | None:
