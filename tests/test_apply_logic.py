@@ -870,3 +870,35 @@ def test_payment_receipts_are_not_application_confirmations():
     from jobagent.inbox import triage
     assert triage("Thank you for your payment", "Bursar <bursaremail@school.edu>") == "skip"
     assert triage("Thank you for your order", "shop@example.com") == "skip"
+
+
+def test_account_mails_and_lever_pairs_count_once(tmp_path):
+    """CHS / Westinghouse account-creation mail is not an application; Lever's two mails for one Match Group
+    application (company + job, 1 s apart) count once, but two jobs at one company (Allegion) stay two."""
+    from datetime import date
+    from jobagent.db import DB
+    from jobagent.inbox import applied_mails, sender_company, triage
+    assert triage("Thank you for creating an account with CHS", "CHS Careers <recruiting@chsinc.com>") == "skip"
+    assert triage("Confirmation of receipt of your application", "jobs@acme.com") == "applied"
+    lever = "Match Group <no-reply@hire.lever.co>"
+    allegion = '"atwork.systems allegion" <allegion@myworkday.com>'
+    gh = "no-reply@us.greenhouse-mail.io"
+    db = DB(tmp_path / "j.db")
+    rows = [("w", "2026-10-21T17:05:00-05:00", "Westinghouse Talent Acquisition <x@wec.com>", "Welcome / Thanks for Creating Account"),
+            ("m1", "2026-11-07T04:56:10-06:00", lever, "Thank you for your application to Match Group"),
+            ("m2", "2026-11-07T04:56:11-06:00", lever, "Thanks for applying to Backend Engineer Intern"),
+            ("a1", "2026-10-30T02:47:00-05:00", allegion, "Thank you for applying to Summer Intern - Software Engineering"),
+            ("a2", "2026-10-30T02:47:12-05:00", allegion, "Thank you for applying to Summer Intern - Software Systems"),
+            ("g1", "2026-11-01T00:06:00-05:00", gh, "Thank you for applying to Arcesium LLC"),
+            ("g2", "2026-11-01T00:06:30-05:00", gh, "We've received your application for IT Engineer Intern")]
+    db.conn.executemany("insert into inbox_items(msg_id, received, sender, subject, company, kind, status) "
+                        "values(?,?,?,?,'','applied','closed')", rows)
+    db.commit()
+    mails = applied_mails(db, since=date(2026, 10, 1))
+    assert [subject for _, _, subject in mails] == [
+        "Thank you for applying to Summer Intern - Software Engineering",
+        "Thank you for applying to Summer Intern - Software Systems",
+        "Thank you for applying to Arcesium LLC", "We've received your application for IT Engineer Intern",
+        "Thanks for applying to Backend Engineer Intern"]
+    assert sender_company(lever, "Thanks for applying to Backend Engineer Intern") == "Match Group"
+    assert sender_company(gh, "Thank you for applying to Burns Engineering, Inc.") == "Burns Engineering, Inc"

@@ -48,7 +48,10 @@ _NOT_CONFIRM = re.compile(r"(?i)update|status|unfortunately|complete your|next s
 # "thank you" mail that is not an application: memberships, job alerts, talent-community sign-ups (Newmont)
 _NOT_APPLICATION = re.compile(r"(?i)linkedin|valued member|job alerts?|signing up|signed up|sign up for|talent (community|network)|"
                               r"newsletter|subscri|account (has been )?(created|activated)|verify your|welcome to|"
-                              r"payment|receipt|your order|invoice|donation|purchase|bursar")  # "Thank you for your payment"
+                              r"payment|receipt(?! of (your )?application)|your order|invoice|donation|purchase|bursar|"  # "Thank you for your payment"
+                              r"creat(ed|ing) (an |your )?account|account creat")  # CHS "Thank you for creating an account"
+# words that make "applying to X" a job, not an employer (Match Group: "Thanks for applying to Backend Engineer Intern")
+_ROLE = re.compile(r"(?i)\b(intern(ship)?s?|engineer|developer|analyst|scientist|co-?op)\b")
 # a rejection under a thank-you subject ("Thank you from NVIDIA", Merck's "Thank You For Applying!"): let the LLM decide
 _REJECT_BODY = re.compile(r"(?i)not (to )?(be )?mov(e|ing) forward|(pursue|proceed|progressing|move forward) with other|"
                           r"other candidates|regret to inform|not been selected|will not be (moving|proceeding)|"
@@ -282,14 +285,38 @@ def applied_mails(db: DB, day: date | None = None, since: date | None = None) ->
                                "substr(received, 1, 10) >= ? order by received", ((since or date.min).isoformat(),)).fetchall()
     out: list[tuple[datetime, str, str]] = []
     last: dict[tuple[str, str], datetime] = {}
+    paired: set[int] = set()
     for received, sender, subject in rows:
+        sender, subject = sender or "", subject or ""
+        if _NOT_APPLICATION.search(subject + " " + sender):
+            continue  # stored before the filter knew this kind (Westinghouse "Thanks for Creating Account")
         t = datetime.fromisoformat(received)
-        key = (re.sub(r"\W+", "", (sender or "").lower()), re.sub(r"\W+", "", (subject or "").lower()))
+        key = (re.sub(r"\W+", "", sender.lower()), re.sub(r"\W+", "", subject.lower()))
         if key in last and (t - last[key]).total_seconds() < 180:
             continue
         last[key] = t
-        out.append((t, sender or "", subject or ""))
+        j = next((i for i in range(len(out) - 1, max(len(out) - 10, 0) - 1, -1) if i not in paired
+                  and out[i][1] == sender and (t - out[i][0]).total_seconds() < 120
+                  and _one_application(sender, out[i][2], subject)), None)
+        if j is not None:
+            paired.add(j)
+            if _ROLE.search(subject):  # keep the mail that names the job
+                out[j] = (out[j][0], sender, subject)
+            continue
+        out.append((t, sender, subject))
     return out
+
+
+def _one_application(sender: str, a: str, b: str) -> bool:
+    """Lever sends two confirmations for one application, seconds apart (Match Group, 2026-11-07): "Thank you for your
+    application to Match Group" and "Thanks for applying to Backend Engineer Intern". One names the sender's company and
+    no job, the other names the job. Two jobs at one company (Allegion, 12 s apart) both name a job and stay two."""
+    name = re.sub(r"\W+", "", parseaddr(sender)[0].lower())
+    if len(name) < 3:
+        return False  # Greenhouse mails from a bare shared address: different employers
+    def company_only(s: str) -> bool:
+        return name in re.sub(r"\W+", "", s.lower()) and not _ROLE.search(s)
+    return (company_only(a) and bool(_ROLE.search(b))) or (company_only(b) and bool(_ROLE.search(a)))
 
 
 def _tenant_companies(db: DB) -> dict[str, str]:
@@ -310,10 +337,10 @@ def sender_company(sender: str, subject: str, tenants: dict[str, str] | None = N
         return tenants[local]
     m = re.search(r"(?i)(?:applying (?:to|at)|application (?:to|with|at)|interest in|applied to a position at|"
                   r"applying for .*? at)\s+([A-Z][\w&.,' -]{1,40}?)(?:[!.:|]|$)", subject)
-    if m:
-        return m.group(1).strip()
     clean = re.sub(r"(?i)\b(workday|human resources|hr|talent acquisition|careers?|recruiting|people operations|"
                    r"notifications?|no-?reply|team|hiring)\b", "", name).strip(" -|,")
+    if m and not (clean and _ROLE.search(m.group(1))):  # "applying to Backend Engineer Intern" names the job
+        return m.group(1).strip()
     if clean:
         return clean
     local, _, dom = addr.partition("@")
