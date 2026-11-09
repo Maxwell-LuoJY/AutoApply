@@ -667,6 +667,35 @@ def test_confirmations_search_a_day_back_across_utc_midnight(monkeypatch):
     assert [subj for _, _, subj in found] == ["Thank You For Applying!"]
 
 
+def test_run_confirmations_skip_security_notices_and_rejections(monkeypatch):
+    """GitHub's OAuth notice says "application" and Greenhouse's rejection says "your application to": neither is a
+    confirmation in the daily report's during-the-run count."""
+    from datetime import datetime, timezone
+    from jobagent import inbox
+    from jobagent.apply import mail
+    subjects = {b"1": ("noreply@github.com", "[GitHub] A third-party OAuth application has been added to your account"),
+                b"2": ("no-reply@us.greenhouse-mail.io", "Important information about your application to Lumbermen's"),
+                b"3": ("hitachi@myworkday.com", "Thank you for applying to Hitachi")}
+
+    class FakeIMAP:
+        def __init__(self, host): pass
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+        def login(self, *a): pass
+        def select(self, *a, **k): pass
+        def search(self, charset, query): return "OK", [b"1 2 3"]
+
+        def fetch(self, num, what):
+            frm, subject = subjects[num]
+            head = f"From: {frm}\r\nSubject: {subject}\r\nDate: Mon, 9 Nov 2026 05:40:00 +0000\r\n\r\n"
+            return "OK", [(b"", head.encode())]
+    monkeypatch.setattr(mail.imaplib, "IMAP4_SSL", FakeIMAP)
+    found = mail.Mailbox("me@example.com", "pw").confirmations(datetime(2026, 11, 9, 5, 27, tzinfo=timezone.utc))
+    assert [subj for _, _, subj in found] == ["Thank you for applying to Hitachi"]
+    # the rejection still reaches the LLM in the inbox scan, by subject alone too
+    assert inbox.triage("Important information about your application to Acme", "careers@acme.com") == "classify"
+
+
 def test_throttled_pre_submit_check_is_retried_not_failed(monkeypatch):
     """Every key rate-limited during the pre-submit check: nothing is submitted and the job is tried again later."""
     from types import SimpleNamespace

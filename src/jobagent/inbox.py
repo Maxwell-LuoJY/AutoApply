@@ -34,7 +34,8 @@ _CANDIDATE = re.compile(
     r"(?i)assess|hackerrank|codesignal|codility|hirevue|karat|\bshl\b|pymetrics|harver|criteria|testgorilla|mettl|"
     r"interview|schedul|availability|coffee chat|phone screen|superday|next step|task awaits|action required|"
     r"complete your|final step|finish your|invit|challenge|screening|unfortunately|regret|not (be )?moving forward|"
-    r"update on your|application status|status update|we've got an update|decision|offer")
+    r"update on your|application status|status update|we've got an update|decision|offer|"
+    r"important information about your application")  # Greenhouse's rejection subject (Lumbermen's, Sigma)
 _CANDIDATE_SENDER = re.compile(r"(?i)hackerrank|codesignal|codility|hirevue|karat|shl\.com|pymetrics|harver|goodtime|"
                                r"modernloop|calendly|paradox\.ai|gem\.com|ashbyhq|greenhouse|lever\.co|myworkday|icims")
 _NOT_CANDIDATE = re.compile(r"(?i)security code|verify your candidate account|verification code|job alert|recommended|"
@@ -44,7 +45,8 @@ _NOT_CANDIDATE = re.compile(r"(?i)security code|verify your candidate account|ve
 _CONFIRM = re.compile(r"(?i)thank(s| you)|received|submitted|we'?ve got it|got it!|application (received|complete)|"
                       r"confirmation|you've applied|your application (to|for|with)")
 _NOT_CONFIRM = re.compile(r"(?i)update|status|unfortunately|complete your|next step|task|action required|final step|"
-                          r"invit|security code|verify|interview|assessment|screening|feedback matters|survey|experience")
+                          r"invit|security code|verify|interview|assessment|screening|feedback matters|survey|experience|"
+                          r"important information")
 # "thank you" mail that is not an application: memberships, job alerts, talent-community sign-ups (Newmont)
 _NOT_APPLICATION = re.compile(r"(?i)linkedin|valued member|job alerts?|signing up|signed up|sign up for|talent (community|network)|"
                               r"newsletter|subscri|account (has been )?(created|activated)|verify your|welcome to|"

@@ -93,27 +93,28 @@ def _stats(db: DB) -> list[str]:
         return []
 
 
-def _confirmations(since: datetime) -> list[tuple[datetime, str, str]]:
-    """(time, sender, subject) of application-confirmation emails since the run started; [] without Gmail access."""
+def _confirmations(since: datetime) -> list[tuple[datetime, str, str]] | None:
+    """(time, sender, subject) of application-confirmation emails since the run started; None without Gmail access
+    (an empty list is a run that got none, which the report must not call a read failure)."""
     from .apply.mail import Mailbox
     mailbox = Mailbox.from_env(config.profile()["contact"]["email"])
     if mailbox is None:
-        return []
+        return None
     try:
         return mailbox.confirmations(since)
     except Exception as e:  # mail is a cross-check only; never fail the daily report because of it
         log.warning("读取邮箱确认信失败：%s", e)
-        return []
+        return None
 
 
-def write_report(db: DB, fs, ss, results: list, emails: list, started: datetime, review: Path | None,
+def write_report(db: DB, fs, ss, results: list, emails: list | None, started: datetime, review: Path | None,
                  note: str = "", brief: list[str] | None = None) -> Path:
     day = datetime.now().strftime("%Y-%m-%d")
     by = {k: [(r, o) for r, o in results if o.status == k] for k in ("submitted", "skip", "blocked", "failed", "unconfirmed", "retry")}
     need = by["blocked"] + by["failed"] + by["unconfirmed"]
     essays = [(r, o) for r, o in by["skip"] if o.reason.startswith("需要开放式回答") or "cover letter" in o.reason]
     other_skips = [(r, o) for r, o in by["skip"] if not (o.reason.startswith("需要开放式回答") or "cover letter" in o.reason)]
-    mail_text = [f"{frm} {subj}".lower() for _, frm, subj in emails]
+    mail_text = [f"{frm} {subj}".lower() for _, frm, subj in emails or []]
 
     def mailed(r) -> int:
         """How many of today's confirmation emails mention this company."""
@@ -151,7 +152,8 @@ def write_report(db: DB, fs, ss, results: list, emails: list, started: datetime,
         f"- 发布超过 {config.settings().get('max_age_days')} 天、不再筛选和投递的岗位共 {stale} 个",
         f"- 投递：**已提交 {len(by['submitted'])} 个**，需要你处理 {len(need) + len(possibly)} 个，"
         f"要写短文 {len(essays)} 个，其他跳过 {len(other_skips)} 个" + (f"，限流没轮到 {len(by['retry'])} 个（下次再投）" if by["retry"] else ""),
-        f"- Gmail 里今天收到申请确认信 {len(emails)} 封" if emails else "- Gmail 确认信：没有读到（没配置或读取失败）",
+        "- Gmail 确认信：没有读到（没配置或读取失败）" if emails is None else
+        f"- 运行期间 Gmail 收到申请确认信 {len(emails)} 封" if emails else "- 运行期间 Gmail 还没收到申请确认信",
     ]
     if note:
         out.append(f"- ⚠ {note}")

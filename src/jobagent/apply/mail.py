@@ -80,11 +80,10 @@ class Mailbox:
         return None
 
 
-_CONFIRM = re.compile(r"(?i)thank|received|application|applying|applied|submission|submitted")
-_NOT_CONFIRM = re.compile(r"(?i)security code|verify|verification|activate|task awaits|job alert|recommended|newsletter")
-
-
 def _confirmation_headers(mailbox: "Mailbox", since: datetime) -> list[tuple[datetime, str, str]]:
+    # the inbox scan's own subject rules: a looser "application" match counted GitHub's "A third-party OAuth
+    # application has been added to your account" as a confirmation
+    from ..inbox import triage
     out = []
     with imaplib.IMAP4_SSL("imap.gmail.com") as m:
         m.login(mailbox.address, mailbox.app_password)
@@ -101,7 +100,7 @@ def _confirmation_headers(mailbox: "Mailbox", since: datetime) -> list[tuple[dat
                 continue
             subject = str(make_header(decode_header(msg["Subject"] or ""))).replace("\n", " ")
             sender = str(make_header(decode_header(msg["From"] or "")))
-            if sent >= since and _CONFIRM.search(subject) and not _NOT_CONFIRM.search(subject):
+            if sent >= since and triage(subject, sender) == "applied":
                 out.append((sent, sender, subject))
     return sorted(out)
 
