@@ -511,3 +511,28 @@ def test_computing_major_correction_does_not_send_the_agent_back():
          "fix": "Artificial Intelligence"}]})
     seen = [{"label": "Field of Study", "kind": "combobox", "nth": 0, "value": "Computer Science"}]  # the fill's own pick
     assert audit.judge(llm, config.profile(), ROW, [], "Review", [], seen) == []
+
+
+def test_unoffered_major_keeps_the_current_pick_on_this_page(monkeypatch):
+    """Biodesix (Greenhouse): the judge asked for "Artificial Intelligence", the Discipline list has none, and the
+    closest pick "Computer Science" was already there: settled, not failed. A blank major or another field still fails."""
+    from jobagent.apply import forms
+    monkeypatch.setattr(forms, "fill_field", lambda page, f, v, cb: "下拉框里找不到 'Artificial Intelligence'（看到的选项：无）")
+    page = SimpleNamespace(keyboard=SimpleNamespace(press=lambda k: None), wait_for_timeout=lambda ms: None)
+    items = [{"label": "Discipline", "kind": "combobox", "value": "Computer Science"},
+             {"label": "Discipline", "kind": "combobox", "value": ""},
+             {"label": "Degree", "kind": "combobox", "value": "Bachelor's Degree"}]
+    p = lambda i, shown: audit.Problem("Discipline" if i < 2 else "Degree", shown, "AI", "Artificial Intelligence", i)  # noqa: E731
+    settled: dict = {}
+    assert audit.fix_here(page, items, [p(0, "Computer Science")], settled)
+    assert settled == {("discipline", "Computer Science"): True}
+    assert not audit.fix_here(page, items, [p(1, "(blank)")], {})
+    assert not audit.fix_here(page, items, [p(2, "Bachelor's Degree")], {})
+
+
+def test_broader_majors_for_fields_lists_leave_out():
+    from jobagent.apply.forms import broader_majors
+    assert broader_majors("Artificial Intelligence")[0] == "Computer Science"
+    assert broader_majors("B.Eng. in Artificial Intelligence")[0] == "Computer Science"
+    assert broader_majors("Data Science")[0] == "Data Science"
+    assert broader_majors("Mechanical Engineering") == []

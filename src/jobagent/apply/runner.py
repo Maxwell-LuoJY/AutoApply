@@ -253,7 +253,7 @@ def _final_audit(page: Page, adapter: Adapter, ctx: ApplyContext, qa: list, shot
         if earlier:  # a review page: the wrong values were entered on earlier pages
             if not _fix_on_earlier_pages(page, adapter, earlier, shot, ctx.audit_settled):
                 break
-        if (here := [p for p in found if p.item is not None]) and not audit.fix_here(page, items, here):
+        if (here := [p for p in found if p.item is not None]) and not audit.fix_here(page, items, here, ctx.audit_settled):
             break
         log.info("   已修改，重新核对")
     shot("before-submit")

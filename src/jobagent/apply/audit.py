@@ -352,8 +352,9 @@ def correction(ctx, f: dict):
     return c.get((key, None))
 
 
-def fix_here(page: Page, items: list[dict], problems: list[Problem]) -> bool:
-    """Re-enter the fixes for problems on this page's own fields. True if every problem here could be fixed."""
+def fix_here(page: Page, items: list[dict], problems: list[Problem], settled: dict | None = None) -> bool:
+    """Re-enter the fixes for problems on this page's own fields. True if every problem here could be fixed.
+    A major the list doesn't offer keeps the pick already there, recorded in `settled` like on earlier pages."""
     ok = True
     for p in problems:
         if p.fix is None or p.item is None:
@@ -363,6 +364,13 @@ def fix_here(page: Page, items: list[dict], problems: list[Problem]) -> bool:
         err = forms.fill_field(page, f, p.fix, lambda v: None)
         if f["kind"] == "combobox":
             page.keyboard.press("Escape")
+        if err and settled is not None and shown(f) and re.search(r"(?i)field of study|major|discipline", f.get("label") or "") \
+                and re.search(r"选不中|找不到", err):
+            # Biodesix (Greenhouse, 2026-11-10): the judge asked for "Artificial Intelligence", the list has none,
+            # and "Computer Science" was already the closest
+            log.info("   「%s」的列表里没有「%s」，保留现在的「%s」", f.get("label"), p.fix, shown(f))
+            settled[(forms.norm(p.field), p.shown)] = True
+            continue
         if err:
             log.info("   总核对修改失败：%s → %s（%s）", f.get("label"), p.fix, err)
             ok = False

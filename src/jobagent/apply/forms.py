@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import difflib
+import logging
 import os
 import re
 import time
@@ -11,6 +12,8 @@ from typing import Callable
 
 from playwright.sync_api import Error as PlaywrightError
 from playwright.sync_api import Page
+
+log = logging.getLogger("jobagent")
 
 JS = Path(__file__).with_name("extract.js").read_text(encoding="utf-8")
 
@@ -269,14 +272,35 @@ def _search_terms(value: str) -> list[str]:
 UNLISTED_SCHOOL = ["Other", "Not Found", "Not Listed", "School Not Listed", "Other - Not Listed"]
 
 
+# Majors many discipline lists leave out, and the broader fields they sit in (Greenhouse's Discipline list has no
+# "Artificial Intelligence": Scout Motors' box stayed blank, 2026-11-10). Earlier picks of the closest field were accepted.
+_MAJOR_LABEL = re.compile(r"(?i)field of study|\bmajor\b|discipline|area of study")
+_BROADER_MAJOR = [
+    (re.compile(r"(?i)artificial intelligence|machine learning|\bai\b"),
+     ["Computer Science", "Computer Engineering", "Computer and Information Science", "Engineering"]),
+    (re.compile(r"(?i)data science|analytics"), ["Data Science", "Statistics", "Computer Science", "Mathematics"]),
+]
+
+
+def broader_majors(value: str) -> list[str]:
+    return next((alts for pat, alts in _BROADER_MAJOR if pat.search(value or "")), [])
+
+
 def _fill_combobox(page: Page, f: dict, value: str) -> str | None:
-    """Pick an option in a custom dropdown / type-ahead. A school must match by name, else "Other" (if offered)."""
+    """Pick an option in a custom dropdown / type-ahead. A school must match by name, else "Other" (if offered);
+    a major the list doesn't have takes the broader field it belongs to."""
     school = bool(_SCHOOL_LABEL.search(f.get("label") or ""))
     err = _fill_combobox_once(page, f, value, school)
     if err and school and norm(value) not in {norm(u) for u in UNLISTED_SCHOOL}:
         for fallback in UNLISTED_SCHOOL:
             page.keyboard.press("Escape")
             if _fill_combobox_once(page, f, fallback, True) is None:
+                return None
+    if err and not school and _MAJOR_LABEL.search(f.get("label") or ""):
+        for broader in broader_majors(value):
+            page.keyboard.press("Escape")
+            if _fill_combobox_once(page, f, broader, False) is None:
+                log.info("   「%s」的列表里没有「%s」，选了「%s」", (f.get("label") or "")[:50], value[:40], broader)
                 return None
     return err
 
