@@ -57,7 +57,10 @@ _ROLE = re.compile(r"(?i)\b(intern(ship)?s?|engineer|developer|analyst|scientist
 # a rejection under a thank-you subject ("Thank you from NVIDIA", Merck's "Thank You For Applying!"): let the LLM decide
 _REJECT_BODY = re.compile(r"(?i)not (to )?(be )?mov(e|ing) forward|(pursue|proceed|progressing|move forward) with other|"
                           r"other candidates|regret to inform|not been selected|will not be (moving|proceeding)|"
-                          r"no longer (under consideration|being considered)|position has been filled|decided not to")
+                          r"no longer (under consideration|being considered)|position has been filled|decided not to|"
+                          # a closed role is an end too (NVIDIA: "no longer recruiting for the JR2027170 … role")
+                          r"no longer (recruiting|hiring|accepting applications) for|(position|role|requisition) "
+                          r"(has been|was|is) (closed|cancell?ed|withdrawn)")
 
 
 def triage(subject: str, sender: str, body: str | None = None) -> str:

@@ -813,6 +813,8 @@ def test_inbox_triage_keeps_confirmations_and_catches_disguised_rejections():
     # Merck / NVIDIA: a rejection under a thank-you subject goes to the LLM
     assert triage("Thank you from NVIDIA", "hr@nvidia.com", "we have decided not to move forward") == "classify"
     assert triage("Thank You For Applying!", "x@myworkday.com", "we will be progressing with other candidates") == "classify"
+    assert triage("Thank you from NVIDIA", "hr@nvidia.com",
+                  "we are no longer recruiting for the JR2027170 AI Systems Software Engineering Intern role") == "classify"
     # not applications
     assert triage("Alex, thanks for being a valued member", "LinkedIn Premium <x@linkedin.com>") == "skip"
     assert triage("Thank you for signing up for Newmont Job Alerts", "jobs@newmont.com") == "skip"
