@@ -536,3 +536,17 @@ def test_broader_majors_for_fields_lists_leave_out():
     assert broader_majors("B.Eng. in Artificial Intelligence")[0] == "Computer Science"
     assert broader_majors("Data Science")[0] == "Data Science"
     assert broader_majors("Mechanical Engineering") == []
+
+
+def test_highest_completed_degree_is_not_the_one_in_progress():
+    """J.M. Smucker (2026-11-10): "Highest Degree … you have completed?" went out as the M.S. still in progress."""
+    profile = config.profile()
+    opts = ["High School", "Bachelor's Degree (ex: BA, BS)", "Master's Degree (ex. MA, MS, ME'd)", "Doctorate"]
+    q = "What is the Highest Degree or Level of Education you have completed?"
+    [p] = audit.rule_problems([_f(0, "select", q, "Master's Degree (ex. MA, MS, ME'd)", options=opts)], profile, ROW)
+    assert p.fix == "Bachelor's Degree (ex: BA, BS)"
+    assert audit.rule_problems([_f(0, "select", q, "Bachelor's Degree (ex: BA, BS)", options=opts)], profile, ROW) == []
+    assert audit.rule_problems([_f(0, "combobox", "What is the highest degree you have achieved?", "Masters Degree")],
+                               profile, ROW)[0].fix == "Bachelor's degree"
+    for ok in ("What is the highest level of education you are pursuing or have completed?", "Highest level of education"):
+        assert audit.rule_problems([_f(0, "select", ok, "Master's Degree (ex. MA, MS, ME'd)", options=opts)], profile, ROW) == []

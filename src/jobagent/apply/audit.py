@@ -17,6 +17,7 @@ from dataclasses import dataclass
 from playwright.sync_api import Error as PlaywrightError
 from playwright.sync_api import Page
 
+from .. import config
 from . import answers, forms
 from .forms import CHOICE_KINDS, best_option, norm
 
@@ -73,14 +74,32 @@ def _is_us(value: str) -> bool:
     return bool(re.search(r"(?i)\b(united states|usa|u\.s\.a?\.?|us)\b", value))
 
 
+# "highest degree completed / achieved", not "pursuing or completed": a degree still in progress is not an answer
+_HIGHEST_DONE = re.compile(r"highest\b(?!.*pursu).*\b(completed?|attained|earned|obtained|achieved|received|conferred)\b|"
+                           r"\b(completed|attained|earned|obtained|achieved)\b.*\bhighest\b(?!.*pursu)")
+_RANK = {"associate": 1, "bachelor": 2, "master": 3, "phd": 4}
+
+
+def highest_completed(profile: dict) -> str | None:
+    done = [config.degree_level(e) for e in profile.get("education") or [] if not e.get("expected")]
+    return max((lv for lv in done if lv in _RANK), key=_RANK.get, default=None)
+
+
 def rule_problems(items: list[dict], profile: dict, row) -> list[Problem]:
     out: list[Problem] = []
+    done = highest_completed(profile)
     phone = re.sub(r"\D", "", profile["contact"]["phone"])
     for i, f in enumerate(items):
         value, label = shown(f), norm(f.get("label", ""))
         if not value:
             continue  # blanks: required ones are caught by missing_required
         mk = lambda expected, fix: Problem(f.get("label", ""), value, expected, fix, i, f.get("nth"))  # noqa: E731
+        if f["kind"] in CHOICE_KINDS and done and _HIGHEST_DONE.search(label) \
+                and _RANK.get(answers._level_of(value) or "", 0) > _RANK[done]:
+            # J.M. Smucker (2026-11-10): "Highest Degree … you have completed?" was submitted as the M.S. in progress
+            opts = [o for o in f.get("options") or [] if answers._level_of(o) == done and not answers._IN_PROGRESS.search(o)]
+            out.append(mk(answers._LEVEL_NAME[done], opts[0] if opts else answers._LEVEL_NAME[done]))
+            continue
         if f["kind"] in CHOICE_KINDS and answers._COUNTRY.search(label):
             if answers.is_us(profile["contact"]["address"]["country"]) and not _is_us(value):
                 want = answers._deterministic(f, profile, row)
