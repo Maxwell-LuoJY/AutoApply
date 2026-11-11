@@ -335,7 +335,8 @@ def missing_entries(text: str, targets: dict[str, int]) -> list[Problem]:
     2026-11-03: Workday dropped the first school entry while a degree was corrected, and the application went out).
     Only pages that number their entries ("Education 1", "Work Experience 2") are checked."""
     out = []
-    for key, pattern, name in (("edu", r"education", "教育经历"), ("work", r"(?:work |professional )?experience", "工作经历")):
+    for key, pattern, name in (("edu", r"education", "教育经历"),
+                               ("work", r"(?:work (?:or other )?|professional )?experience", "工作经历")):
         shown_n = len(set(re.findall(rf"(?im)^\s*{pattern} (\d+)\s*$", text)))
         if shown_n and shown_n < targets.get(key, 0):
             out.append(Problem(f"{name}条数", f"{shown_n} 条", f"简历上的 {targets[key]} 条", None))

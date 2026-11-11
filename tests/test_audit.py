@@ -332,6 +332,29 @@ def test_your_education_headings_are_entries():
         b.close()
 
 
+
+def test_work_or_other_experience_headings_are_entries():
+    # Jabil's Workday: "Work or Other Experience" with entries "Work or Other Experience 5". Unrecognized, the parser's
+    # extra entry (a project read as a job) wasn't deleted and its empty Job Title / From / To sent the job to you
+    from playwright.sync_api import sync_playwright
+    from jobagent.apply import forms
+    from jobagent.apply.adapters import _ENTRIES_JS
+    from jobagent.apply.audit import missing_entries
+    html = """<form id="f"><h3>Work or Other Experience</h3><div><h4>Work or Other Experience 1</h4>
+      <label for="a">Job Title</label><input id="a" value="AI Engineer Intern"><button type="button">Delete</button></div>
+      <div><h4>Work or Other Experience 2</h4><label for="b">Job Title</label><input id="b" value="Medical-Assistant">
+      <button type="button">Delete</button></div><button type="button">Add Another</button></form>"""
+    with sync_playwright() as p:
+        b = p.chromium.launch()
+        page = b.new_page()
+        page.set_content(html)
+        labels = [f["label"] for f in forms.snapshot(page, "#f").fields]
+        assert labels == ["Work Experience 1 — Job Title", "Work Experience 2 — Job Title"]
+        assert page.evaluate(_ENTRIES_JS, None) == {"work": 2}
+        b.close()
+    text = "Work or Other Experience\nWork or Other Experience 1\nJob Title\nAI Engineer Intern\n"
+    assert [p.field for p in missing_entries(text, {"work": 2})] == ["工作经历条数"]
+
 def test_listed_countries_and_visa_status_rules():
     from jobagent.apply.answers import _deterministic
     hp = ("In order to comply with the U.S. Export Control regulations ... Please indicate if you are a citizen or permanent "

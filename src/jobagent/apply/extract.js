@@ -136,8 +136,8 @@
     pickers.get(box).push({ inp, part: m[1] });
   }
   // RBC titles them "Your Work Experience 2" / "Your Experience 1" / "Your Education 1", Marvell "Professional
-  // Experience 1": all named "Work Experience N" / "Education N" like everywhere else
-  const ENTRY = /^(your\s+)?(professional\s+)?(work experience|experience|employment|education)\s*\d+$/i;
+  // Experience 1", Jabil "Work or Other Experience 5": all named "Work Experience N" / "Education N" like everywhere else
+  const ENTRY = /^(your\s+)?(professional\s+)?(work( or other)? experience|experience|employment|education)\s*\d+$/i;
   const entryLabel = (t) => /education/i.test(t) ? t.replace(/^.*?education/i, 'Education')
     : t.replace(/^.*?(experience|employment)/i, 'Work Experience');
   const entryName = (el) => {  // "Work Experience 2": which repeated block a From/To picker belongs to

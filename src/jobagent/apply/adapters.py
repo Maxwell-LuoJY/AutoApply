@@ -333,8 +333,9 @@ class Ashby(Adapter):
 # Add / Add Another button with data-ja-add=work|edu. Walks the page in document order between section headings.
 _ENTRIES_JS = """(deleteLast) => {
   const txt = (e) => (e.innerText || '').replace(/\\s+/g, ' ').trim();
-  // RBC: "Your Experience", Marvell: "Professional Experience" (never the page title "My Experience")
-  const SECTION = {work: /^(your |professional )?(work )?experience$|^(your )?(employment|work) history$/i,
+  // RBC: "Your Experience", Marvell: "Professional Experience", Jabil: "Work or Other Experience" (never the page
+  // title "My Experience")
+  const SECTION = {work: /^(your |professional )?(work( or other)? )?experience$|^(your )?(employment|work) history$/i,
                    edu: /^(your )?education$/i};
   const out = {}, dels = {}; let cur = null, curTag = null;
   document.querySelectorAll('[data-ja-add]').forEach((e) => e.removeAttribute('data-ja-add'));
@@ -517,7 +518,8 @@ class Workday(Adapter):
         """Review page: every resume job and school must appear (when the form has those sections at all)."""
         text = page.locator("body").inner_text()
         targets, problems = self._targets(ctx), []
-        work = r"(?:your |professional )?(?:work )?experience"  # RBC "Your Experience", Marvell "Professional Experience"
+        # RBC "Your Experience", Marvell "Professional Experience", Jabil "Work or Other Experience"
+        work = r"(?:your |professional )?(?:work (?:or other )?)?experience"
         for key, section, name in (("work", work, "Work Experience"), ("edu", r"(?:your )?education", "Education")):
             n = targets.get(key, 0)
             if not n or not re.search(rf"(?im)^\s*{section}\s*$", text):
