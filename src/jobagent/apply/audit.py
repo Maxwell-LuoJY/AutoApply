@@ -146,9 +146,9 @@ NOT problems: formatting differences (phone punctuation, date formats, "The Univ
 company with or without its department); a choice field holding the closest available option when the exact fact is not
 among its options (e.g. graduation "May/June" when the exact month isn't offered, major "Computer Science" when
 "Artificial Intelligence" isn't offered); any "how did you hear about us" answer; optional fields left blank; a GPA left
-blank where the facts say it stays blank (intentional); a phone type meaning a mobile phone ("Home Cellular", "Cell",
-"Personal Cell") for the applicant's mobile; "I have a preferred name" left unchecked / No (intentional: the
-legal name is used); a school shown as "Other" / "Not Found" / "Not Listed" (the employer's list doesn't have it); skills lists (not checked); an
+blank where the facts say it stays blank (intentional), or a required one holding the facts' placeholder; a phone type
+meaning a mobile phone ("Home Cellular", "Cell", "Personal Cell") for the applicant's mobile; "I have a preferred name"
+left unchecked / No (intentional: the legal name is used); a school shown as "Other" / "Not Found" / "Not Listed" (the employer's list doesn't have it); skills lists (not checked); an
 empty optional Websites, Languages or Skills section ("No Response"); the wording of essays and free-text answers;
 anything consistent with the facts.{middle}
 When unsure, it is not a problem.

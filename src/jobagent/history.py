@@ -69,3 +69,19 @@ def append(path: Path, rows: list[dict]) -> None:
 
 def now_str() -> str:
     return datetime.now().strftime("%Y-%m-%d %H:%M")
+
+
+def submitted_to(path: Path, company: str) -> list[datetime]:
+    """When applications to this company went out (rows marked 已提交, by the agent or by you), oldest first."""
+    key = lambda c: re.sub(r"[^a-z0-9]+", " ", str(c).lower()).strip()  # noqa: E731
+    if not path.exists() or not key(company):
+        return []
+    out = []
+    with path.open(encoding="utf-8-sig", newline="") as f:
+        for row in csv.DictReader(f):
+            if (row.get("状态") or "").strip() == SUBMITTED and key(row.get("公司名称", "")) == key(company):
+                try:
+                    out.append(datetime.strptime((row.get("申请时间") or "").strip(), "%Y-%m-%d %H:%M"))
+                except ValueError:
+                    continue
+    return sorted(out)

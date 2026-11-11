@@ -80,6 +80,8 @@ defaults:
   cover_letter: skip_job_if_required         # jobs that require a cover letter are skipped / 必填 cover letter 的岗位跳过
   open_ended_required: skip_job
   transcript: upload_only_if_required
+  gpa_if_required: ""                        # required GPA box, school has gpa: null: e.g. "N/A"; "" = manual list
+                                             # 必填 GPA、但这所学校没有 GPA 时填什么；空 = 交给你手动投
 
 # Two resume tracks: SDE (software roles, the default) and AIE (AI / ML / data / analyst / consulting roles).
 # One resume only? Delete the AIE entry (or point both at the same file). A .docx is uploaded until the PDF exists.

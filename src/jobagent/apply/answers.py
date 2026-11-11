@@ -216,7 +216,9 @@ def facts_text(p: dict) -> str:
             line += f"; currently enrolled; expected graduation {_month_year(ed['end'])}"
         if ed.get("honors"):
             line += f", {ed['honors']}"
-        line += f", GPA {ed['gpa']}" if ed.get("gpa") else f". GPA: none yet: a GPA box inside the {ed['school']} entry stays blank"
+        blank = f". GPA: none yet: a GPA box inside the {ed['school']} entry stays blank" + \
+            (f" (a required one: {gpa_req!r})" if (gpa_req := _gpa_if_required(p)) else "")
+        line += f", GPA {ed['gpa']}" if ed.get("gpa") else blank
         lines.append(line)
     if (with_gpa := next((ed for ed in p["education"] if ed.get("gpa")), None)):
         lines.append(f"- A GPA question that doesn't name the school, or asks for current or most recent GPA: "
@@ -312,6 +314,14 @@ def _deterministic(f: dict, profile: dict, row) -> Item | None:
         # got "No" from the general export-control answer). A pre-filled dropdown has no options read: "Yes" is matched when filling.
         if (yes := best_option("Yes", opts, fuzzy=False) if opts else "Yes"):
             return Item(f, yes, "fact")
+    if f["kind"] in CHOICE_KINDS and row is not None and _APPLIED_BEFORE.search(label) \
+            and not re.search(r"\bif (yes|so)\b|\bwhen\b|\bwhich\b", label):
+        # GlobalFoundries asked "Have you applied … within the past 6 months?" two weeks after the agent applied there,
+        # and the planner said No ("previously applied → No" in answers.yaml): the history decides instead. Its
+        # pre-filled Workday dropdown had no options read: the answer is matched when filling.
+        said = "Yes" if applied_before(row["company"], label, profile) else "No"
+        if (pick := best_option(said, opts, fuzzy=False) if opts else said):
+            return Item(f, pick, "fact")
     if f["kind"] in CHOICE_KINDS and opts and re.search(r"(visa|immigration|work authori[sz]ation) (status|type)", label) \
             and re.search(r"(?i)\bf-?1\b", str(profile["work_authorization"].get("visa_status", ""))):
         # an F-1 student; with no plain F-1 option, F-1 CPT (an internship is done under CPT)
@@ -473,6 +483,27 @@ def _experience_by_company(fields: list[dict], row) -> dict[str, Item]:
     return out
 
 
+_APPLIED_BEFORE = re.compile(r"\bappl(ied|y)\b.*\b(before|previously|in the past|within the (past|last)|prior)\b|"
+                             r"\b(ever|previously|before) (been )?appl(ied|y)\b|\bprior applications?\b")
+_WINDOW = re.compile(r"(?:past|last) (\d+|one|two|three|six|twelve) (day|month|year)s?")
+_NUMBER = {"one": 1, "two": 2, "three": 3, "six": 6, "twelve": 12}
+
+
+def applied_before(company: str, label: str, profile: dict | None = None) -> bool:
+    """Has an application to this company gone out (applications.csv, or hold_companies: applied outside the agent),
+    within the window the question names ("within the past 6 months")?"""
+    from datetime import datetime, timedelta
+    from .. import history
+    if norm(company) in [norm(c) for c in (config.settings().get("applying") or {}).get("hold_companies") or []]:
+        return True
+    sent = history.submitted_to(config.APPLICATIONS_CSV, company)
+    if (m := _WINDOW.search(norm(label))):
+        n = int(_NUMBER.get(m.group(1), m.group(1)))
+        cutoff = datetime.now() - timedelta(days=n * {"day": 1, "month": 31, "year": 366}[m.group(2)])
+        sent = [t for t in sent if t >= cutoff]
+    return bool(sent)
+
+
 _CLAIMS_VETERAN = re.compile(r"(?i)\bidentify as (a|one or more)\b.*veteran|\bi am a (protected )?veteran\b")
 
 
@@ -538,6 +569,11 @@ def _shared_put(key: str, answer: dict) -> None:
 
 
 _GPA = re.compile(r"(?i)\bgpa\b|grade point|overall result")
+
+
+def _gpa_if_required(profile: dict) -> str:
+    """What a required GPA box gets for a school without a GPA (profile defaults.gpa_if_required; "": your call)."""
+    return str((profile.get("defaults") or {}).get("gpa_if_required") or "").strip()
 _HEARD = re.compile(r"(?i)how did you (hear|learn|find out)|where did you (hear|find|learn)|source of (application|referral)|referral source")
 _PLACEHOLDER = re.compile(r"(?i)^\s*(select( one)?|choose( one)?|please select|--.*|)\s*$")
 _OTHER_FOLLOWUP = re.compile(r"(?i)^if you (selected|answered|chose|picked)\W{0,3}other\b")
@@ -601,6 +637,9 @@ def plan(fields: list[dict], llm: LLM, profile: dict, row, resume_pdf: Path, cac
             if value in (UNKNOWN, "", None) and f.get("required") and f["kind"] in ("text", "textarea") \
                     and _OTHER_FOLLOWUP.search(label):
                 value, basis = "N/A", "default"  # required "specify Other" box, but Other wasn't chosen
+            if value in (UNKNOWN, "", None) and f.get("required") and f["kind"] == "text" and _GPA.search(label) \
+                    and (gpa_req := _gpa_if_required(profile)):
+                value, basis = gpa_req, "default"  # a school with no GPA yet, but the box is required (GlobalFoundries)
             if value == OPEN_ENDED:
                 if f.get("required"):
                     out.open_ended.append(label)

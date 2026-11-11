@@ -288,6 +288,56 @@ def test_other_followup_gets_na():
     assert not p.unknown and p.items[0].value == "N/A"
 
 
+
+def test_required_gpa_box_without_a_gpa_gets_the_profile_placeholder(tmp_path, monkeypatch):
+    # GlobalFoundries' Workday made "Education 1 — Overall Result (GPA)" required for a school with no GPA yet
+    import copy
+    from jobagent import config
+    from jobagent.apply import answers
+    monkeypatch.setattr(answers, "_SHARED_PATH", tmp_path / "answer_cache.json")
+    monkeypatch.setattr(answers, "_shared", None)
+
+    class FakeLLM:
+        def json_chat(self, system, user, max_tokens):
+            return {"answers": {"g": {"value": "", "basis": "fact"}, "o": {"value": "", "basis": "fact"}}}
+
+    profile = copy.deepcopy(config.profile())
+    resume = config.ROOT / profile["resumes"]["SDE"]["pdf"]
+    req = {"id": "g", "kind": "text", "label": "Education 1 — Overall Result (GPA)", "required": True, "value": "", "nth": 0}
+    opt = dict(req, id="o", required=False)
+    p = answers.plan([req, opt], FakeLLM(), profile, {"company": "A", "title": "x"}, resume, {})
+    assert p.unknown == ["Education 1 — Overall Result (GPA)"] and not p.items   # no placeholder set: your call
+    profile["defaults"]["gpa_if_required"] = "N/A"
+    p = answers.plan([dict(req, id="g"), dict(opt, id="o")], FakeLLM(), profile, {"company": "B", "title": "y"}, resume, {})
+    assert not p.unknown and [(it.field["id"], it.value) for it in p.items] == [("g", "N/A")]   # optional one stays blank
+    assert "(a required one: 'N/A')" in answers.facts_text(profile)
+
+
+def test_applied_before_comes_from_the_history(tmp_path, monkeypatch):
+    # GlobalFoundries: "Have you applied … within the past 6 months?" got "No" two weeks after the agent applied there
+    from datetime import datetime, timedelta
+    from jobagent import config, history
+    from jobagent.apply import answers
+    csv_path = tmp_path / "applications.csv"
+    monkeypatch.setattr(config, "APPLICATIONS_CSV", csv_path)
+    recent, old = datetime.now() - timedelta(days=13), datetime.now() - timedelta(days=400)
+    history.append(csv_path, [
+        {"申请时间": recent.strftime("%Y-%m-%d %H:%M"), "公司名称": "Example Foundries", "岗位名称": "A", "状态": "已提交"},
+        {"申请时间": old.strftime("%Y-%m-%d %H:%M"), "公司名称": "Old Corp", "岗位名称": "B", "状态": "已提交"},
+        {"申请时间": recent.strftime("%Y-%m-%d %H:%M"), "公司名称": "Failed Inc", "岗位名称": "C", "状态": "失败"}])
+    profile = config.profile()
+    yn = lambda label, company: answers._deterministic(  # noqa: E731
+        {"id": "q", "kind": "radio", "label": label, "options": ["Yes", "No"], "value": [], "nth": 0},
+        profile, {"company": company, "title": "Intern", "resume": "SDE"})
+    assert yn("Have you applied to EXAMPLE FOUNDRIES within the past 6 months?", "Example Foundries").value == "Yes"
+    assert yn("Have you ever applied with Old Corp previously?", "Old Corp").value == "Yes"
+    assert yn("Have you applied to Old Corp within the past 6 months?", "Old Corp").value == "No"   # outside the window
+    assert yn("Have you applied for a job with us before?", "Failed Inc").value == "No"   # only submissions count
+    assert yn("At the time of applying, are you 18 years of age or older?", "Example Foundries") is None
+    prefilled = {"id": "q", "kind": "select", "label": "Have you applied to us within the past 6 months?", "options": [],
+                 "value": "No", "nth": 0}   # a pre-filled Workday dropdown: no options read
+    assert answers._deterministic(prefilled, profile, {"company": "Example Foundries", "title": "x"}).value == "Yes"
+
 def _fake_llm(monkeypatch, behaviour):
     """An LLM whose slots call `behaviour(model, key_no)` instead of the network."""
     from types import SimpleNamespace

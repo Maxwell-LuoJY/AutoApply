@@ -16,8 +16,8 @@
   answer: "No"
 - match: "^if (yes|so)\\b.*(relative|family|related)|(list|provide) the name.*(relative|family|relationship)"
   answer: "N/A"
-- match: "previously (applied|worked|been employed)|former employee|worked (here|for us|at .* before)"
-  answer: "No"
+- match: "previously (worked|been employed)|former employee|worked (here|for us|at .* before)"
+  answer: "No"   # "applied before?": decided from applications.csv
 - match: "(ever|previously) been employed (with|by)|ever worked (for|at|with)"
   answer: "No"
 - match: "non-?compete|restrictive covenant"
