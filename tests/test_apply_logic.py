@@ -338,6 +338,30 @@ def test_applied_before_comes_from_the_history(tmp_path, monkeypatch):
                  "value": "No", "nth": 0}   # a pre-filled Workday dropdown: no options read
     assert answers._deterministic(prefilled, profile, {"company": "Example Foundries", "title": "x"}).value == "Yes"
 
+
+def test_unknown_in_a_box_list_is_a_question_and_an_unlisted_school_takes_other(tmp_path, monkeypatch):
+    # PTC: "on-site, hybrid and/or remote?" boxes came back ["__UNKNOWN__"] and were "ticked" (a failure, not a
+    # question); Palantir's Lever school list lacks the school and says to pick "Other (School Not Listed)"
+    from jobagent import config
+    from jobagent.apply import answers
+    monkeypatch.setattr(answers, "_SHARED_PATH", tmp_path / "answer_cache.json")
+    monkeypatch.setattr(answers, "_shared", None)
+
+    class FakeLLM:
+        def json_chat(self, system, user, max_tokens):
+            return {"answers": {"w": {"value": ["__UNKNOWN__"], "basis": "unknown"},
+                                "s": {"value": "The University of Michigan", "basis": "fact"}}}
+
+    profile = config.profile()
+    work = {"id": "w", "kind": "checkbox", "label": "Would you prefer to work on-site, hybrid and/or remote only?",
+            "required": True, "options": ["On-site", "Hybrid", "Remote only"], "value": [], "nth": 0}
+    school = {"id": "s", "kind": "select", "label": "Which university are you currently attending?", "required": True,
+              "options": ["Harvard University", "Other (School Not Listed)"], "value": "", "nth": 0}
+    p = answers.plan([work, school], FakeLLM(), profile, {"company": "A", "title": "x"},
+                     config.ROOT / profile["resumes"]["SDE"]["pdf"], {})
+    assert p.unknown == [work["label"]]
+    assert [(it.field["id"], it.value) for it in p.items] == [("s", "Other (School Not Listed)")]
+
 def _fake_llm(monkeypatch, behaviour):
     """An LLM whose slots call `behaviour(model, key_no)` instead of the network."""
     from types import SimpleNamespace

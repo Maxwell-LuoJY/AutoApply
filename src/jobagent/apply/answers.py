@@ -113,6 +113,18 @@ def school_names(p: dict) -> str:
     return " and ".join(f'"{e["school"]}"' for e in p["education"])
 
 
+def _is_own_school(value, p: dict) -> bool:
+    names = {norm(n) for e in p["education"] for n in [e["school"], *(e.get("aliases") or [])]}
+    return isinstance(value, str) and norm(re.sub(r"(?i)^the\s+", "", value)) in names
+
+
+def unlisted_school_option(opts: list[str]) -> str | None:
+    """A school list's "my school isn't here" option ("Other (School Not Listed)", "Not Found", "Other")."""
+    from .forms import UNLISTED_SCHOOL
+    return next((o for o in opts if re.search(r"(?i)\bnot (listed|found|in (the )?list)\b", o)), None) or \
+        next((o for u in UNLISTED_SCHOOL for o in opts if norm(o) == norm(u)), None)
+
+
 def citizenships(p: dict) -> list[str]:
     c = p["work_authorization"].get("citizenship") or []
     return [str(x) for x in ([c] if isinstance(c, str) else c)]
@@ -656,6 +668,10 @@ def plan(fields: list[dict], llm: LLM, profile: dict, row, resume_pdf: Path, cac
                 # Fluent; Chinese … （只能填一种语言时选 English）"; T-Mobile lists only English / Spanish)
                 rule = next((a for m, a in extra_answers() if re.search(m, label, re.I)), None)
                 value = first_offered(rule or str(value), f.get("options") or []) or value
+            if isinstance(value, list) and UNKNOWN in value:
+                # PTC's "on-site, hybrid and/or remote?" boxes came back ["__UNKNOWN__"] and were "ticked": a failure
+                # instead of a question for you
+                value = [v for v in value if v != UNKNOWN] or UNKNOWN
             if f["kind"] == "checkbox" and isinstance(value, list):
                 # never tick "I have a preferred name" (see _deterministic): in LabCorp's and Marriott's "My
                 # Information" group (with "SMS Opt-in") the planner ticked it, and the legal name went into the
@@ -677,6 +693,10 @@ def plan(fields: list[dict], llm: LLM, profile: dict, row, resume_pdf: Path, cac
             opts = f.get("options") or []
             if f["kind"] in CHOICE_KINDS and opts and f["kind"] != "checkbox":
                 resolved = best_option(value, opts)
+                if resolved is None and _is_own_school(value, profile) and \
+                        re.search(r"(?i)school|universit|college", label):
+                    # Palantir's Lever list: 'Please select "Other (School Not Listed)" if your school is not listed'
+                    resolved = unlisted_school_option(opts)
                 long_list = f["kind"] == "combobox" and f.get("option_count", 0) >= 100  # may be virtualized
                 if resolved is None and not (f["kind"] == "combobox" and (f.get("editable") or long_list)):
                     if f.get("required"):

@@ -425,6 +425,14 @@ def _fill_prompt(page: Page, f: dict, value: str, strict: bool = False) -> str |
             page.wait_for_timeout(400)
             if _fill_prompt_once(page, f, fallback, False, True) is None:
                 return None
+    if err and not school and _MAJOR_LABEL.search(f.get("label") or ""):
+        # Visa's Workday "Field of Study" prompt has no "Artificial Intelligence" either (the dropdown case is above)
+        for broader in broader_majors(value):
+            page.keyboard.press("Escape")
+            page.wait_for_timeout(400)
+            if _fill_prompt_once(page, f, broader, False, False) is None:
+                log.info("   「%s」的列表里没有「%s」，选了「%s」", (f.get("label") or "")[:50], value[:40], broader)
+                return None
     return err
 
 
