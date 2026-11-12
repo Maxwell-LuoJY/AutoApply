@@ -653,13 +653,15 @@ class Workday(Adapter):
         day_ago = datetime.now(timezone.utc) - timedelta(hours=23)
         pattern = re.compile(rf"(https://{re.escape(host)}/[^\s\"'<>]*?/activate/[^\s\"'<>]+)")
         log.info("   Workday（%s）需要验证邮箱，等待验证邮件……", tenant)
-        sender = f"{tenant}@otp.workday.com"
+        # usually <tenant>@otp.workday.com, but Roche sends from Roche-Workday-DoNotReply@roche.com (its email came
+        # in 13 s after the account was made, and was never looked at). The link pattern pins this site anyway.
+        sender = "workday"
         link = None
         if fresh and since:  # a new account: wait for its own email first
             link = ctx.mailbox.wait_for(sender, pattern, since, timeout=150)
         # "already registered but never activated" also lands here: use the newest activation email from today
         link = link or ctx.mailbox.wait_for(sender, pattern, day_ago, timeout=60 if fresh else 180) or \
-            ctx.mailbox.wait_for("workday.com", pattern, day_ago, timeout=20)
+            ctx.mailbox.wait_for(tenant, pattern, day_ago, timeout=20)
         if not link:
             raise Blocked(f"Workday（{tenant}）的账号验证邮件几分钟内都没收到，请手动验证后再投")
         page.goto(htmllib.unescape(link), wait_until="domcontentloaded", timeout=45000)
