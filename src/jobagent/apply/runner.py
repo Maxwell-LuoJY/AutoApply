@@ -474,6 +474,10 @@ def apply_job(session: BrowserSession, row, ctx: ApplyContext) -> Outcome:
                         snap = forms.snapshot(page, adapter.root)
                         if (problems := adapter.check(page, snap, ctx)):
                             raise Failed("经历没填全，没有提交：" + "；".join(problems))
+                    elif fields:
+                        # check() may have set something itself (Lever: "Current location" picked from its
+                        # suggestions after the typed text was cleared): the required-field check reads the page now
+                        snap = forms.snapshot(page, adapter.root)
                     shot(f"step{step}")
                     # what each field shows as we leave the page (incl. values the site pre-filled): the review check refers to them
                     ctx.seen.extend({"label": f.get("label"), "kind": f["kind"], "nth": f.get("nth", 0), "value": audit.shown(f),

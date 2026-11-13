@@ -355,6 +355,33 @@ def test_work_or_other_experience_headings_are_entries():
     text = "Work or Other Experience\nWork or Other Experience 1\nJob Title\nAI Engineer Intern\n"
     assert [p.field for p in missing_entries(text, {"work": 2})] == ["工作经历条数"]
 
+
+def test_lever_location_is_picked_from_its_suggestions():
+    # Lever keeps only a picked suggestion (hidden selectedLocation); typed text alone failed five times
+    from playwright.sync_api import sync_playwright
+    from jobagent.apply.adapters import pick_lever_location
+    html = """<input id="location-input" name="location" required><input type="hidden" id="selected-location" value="">
+      <div class="dropdown-results"></div>
+      <script>
+        const box = document.getElementById('location-input'), res = document.querySelector('.dropdown-results');
+        box.addEventListener('input', () => {
+          res.innerHTML = box.value.length > 3 ? '<div class="dropdown-location">Chicago, IL, USA</div>' : '';
+          const hit = res.querySelector('.dropdown-location');
+          if (hit) hit.onclick = () => { box.value = hit.innerText;
+            document.getElementById('selected-location').value = '{"name":"Chicago, IL, USA"}'; res.innerHTML = ''; };
+        });
+      </script>"""
+    profile = {"contact": {"address": {"city": "Chicago", "state": "Illinois"}}}
+    with sync_playwright() as p:
+        b = p.chromium.launch()
+        page = b.new_page()
+        page.set_content(html)
+        page.fill("#location-input", "Chicago, Illinois, United States")   # what the planner typed
+        assert pick_lever_location(page, profile) is True
+        assert page.input_value("#location-input") == "Chicago, IL, USA"
+        assert pick_lever_location(page, profile) is False                  # already picked: left alone
+        b.close()
+
 def test_listed_countries_and_visa_status_rules():
     from jobagent.apply.answers import _deterministic
     hp = ("In order to comply with the U.S. Export Control regulations ... Please indicate if you are a citizen or permanent "

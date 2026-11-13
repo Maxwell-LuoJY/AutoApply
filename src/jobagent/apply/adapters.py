@@ -315,6 +315,31 @@ class Lever(Adapter):
     def start_url(self, row) -> str:
         return normalize_url(row["url"]) + "/apply"
 
+    def check(self, page: Page, snap: Snapshot, ctx) -> list[str]:
+        pick_lever_location(page, ctx.profile)
+        return super().check(page, snap, ctx)
+
+
+def pick_lever_location(page: Page, profile: dict) -> bool:
+    """Lever's "Current location" keeps only a suggestion picked from its dropdown (the hidden selectedLocation);
+    typed text alone was cleared, and Simbe, Humble and Pattern failed on it five times. True if one was picked."""
+    box, chosen = page.locator("#location-input"), page.locator("#selected-location")
+    if not box.count() or not chosen.count() or chosen.first.input_value():
+        return False
+    a = profile["contact"]["address"]
+    try:
+        box.first.click()
+        box.first.fill("")
+        box.first.type(f"{a['city']}, {a['state']}", delay=40)
+        hit = page.locator(".dropdown-location").filter(has_text=a["city"]).first
+        hit.wait_for(state="visible", timeout=8000)
+        hit.click()
+        page.wait_for_timeout(500)
+        return bool(chosen.first.input_value())
+    except PlaywrightError:
+        log.info("   Lever「Current location」没能从建议里选中")
+        return False
+
 
 class Ashby(Adapter):
     name = "ashby"
