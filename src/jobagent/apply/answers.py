@@ -91,7 +91,8 @@ _LISTED_COUNTRIES = re.compile(r"countries (listed|below)|following countries|of
 _COUNTRY = re.compile(r"^(phone |mobile )?country( phone)?( code)?$|^(phone )?(country|dial(ing)?) code$")
 
 _SPONSOR = re.compile(r"(?i)sponsor")
-_AUTHORIZED = re.compile(r"(?i)(authori[sz]ed|eligible|permitted|legally able) to work")
+# Trinity: "… a citizen, permanent resident, or a foreign national with authorization to work in the country …?"
+_AUTHORIZED = re.compile(r"(?i)(authori[sz]ed|eligible|permitted|legally able) to work|authori[sz]ation to work")
 _CITIZEN_OR_PR = re.compile(r"(?i)\bu\.?s\.? citizen|citizen of the united states|permanent resident|green card")
 # "authorized to work permanently / on an indefinite basis": work_authorization.permanent_or_indefinite, not the plain one
 _PERMANENT = re.compile(r"(?i)\b(permanent(ly)?|indefinite(ly)?|unrestricted)\b")

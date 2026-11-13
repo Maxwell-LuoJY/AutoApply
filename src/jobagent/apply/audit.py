@@ -232,9 +232,11 @@ def judge(llm, profile: dict, row, items: list[dict], text: str, qa: list[dict],
         words = {w for w in norm(fix or "").split() if len(w) > 3}
         if words and re.search(r"field of study|major|discipline", norm(label)) and words <= set(norm(shown_now).split()):
             continue  # "Artificial Intelligence and Robotics" already is the closest the list offers
-        if re.fullmatch(r"(websites?|languages?|skills|certifications?|licenses and certifications|social network urls)",
-                        norm(label)) and norm(shown_now) in ("", "no response"):
-            continue  # an empty optional section (UPS: "Websites: No Response"); a required one fails missing_required
+        if re.fullmatch(r"(websites?|languages?|(type to add )?skills|certifications?|licenses and certifications|"
+                        r"social network urls)", norm(label)) and norm(shown_now) in ("", "no response"):
+            # an empty optional section (UPS: "Websites: No Response"; Trinity's Workday skills box "Type to Add Skills",
+            # left alone on purpose); a required one fails missing_required
+            continue
         if re.search(r"field of study|major|discipline", norm(label)) and fix and planned \
                 and norm(planned) == norm(shown_now) and _COMPUTING.search(shown_now) and _COMPUTING.search(fix):
             # the fill itself chose "Computer Science" for the B.Eng. in AI as the list's closest; going back to change

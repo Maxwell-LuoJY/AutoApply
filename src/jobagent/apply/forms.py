@@ -302,9 +302,16 @@ def _fill_combobox(page: Page, f: dict, value: str) -> str | None:
             if _fill_combobox_once(page, f, broader, False) is None:
                 log.info("   「%s」的列表里没有「%s」，选了「%s」", (f.get("label") or "")[:50], value[:40], broader)
                 return None
+    if err and _PHONE_TYPE.search(f.get("label") or ""):
+        # Stanley Black & Decker's Workday offers only "Main": any type will do for the one number given
+        for alt in ("Main", "Primary", "Personal", "Home", "Other"):
+            page.keyboard.press("Escape")
+            if _fill_combobox_once(page, f, alt, False) is None:
+                return None
     return err
 
 
+_PHONE_TYPE = re.compile(r"(?i)phone (device )?type|type of phone|phone device")
 _SCHOOL_LABEL = re.compile(r"(?i)school|university|institution|college")
 
 

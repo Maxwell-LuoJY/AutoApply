@@ -553,6 +553,11 @@ def test_empty_optional_section_is_not_a_problem():
     llm = SimpleNamespace(json_chat=lambda system, user, max_tokens: {"ok": False, "problems": [
         {"item": None, "field": "Websites", "shown": "No Response", "expected": "https://github.com/x", "fix": "https://github.com/x"}]})
     assert audit.judge(llm, config.profile(), ROW, [], "Review", [], [{"label": "Websites", "kind": "text", "nth": 0, "value": ""}]) == []
+    # Trinity's Workday skills box, left empty on purpose
+    llm = SimpleNamespace(json_chat=lambda system, user, max_tokens: {"ok": False, "problems": [
+        {"item": None, "field": "Type to Add Skills", "shown": "No Response", "expected": "AI & ML: PyTorch", "fix": None}]})
+    seen = [{"label": "Type to Add Skills", "kind": "combobox", "nth": 0, "value": ""}]
+    assert audit.judge(llm, config.profile(), ROW, [], "Review", [], seen) == []
 
 
 def test_computing_major_correction_does_not_send_the_agent_back():

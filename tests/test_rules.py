@@ -357,3 +357,21 @@ def test_coop_titles_are_never_applied_to(tmp_path, monkeypatch):
     db.update(job_id(queued.url), stage="eligible")
     pipeline.refilter(db)
     assert db.get(job_id(queued.url))["stage"] == "filtered"
+
+
+def test_workday_jd_retries_the_underscore_tenant(monkeypatch):
+    # Environmental Defense Fund: host osv-edf, tenant osv_edf; the hyphenated one got 422 three times
+    import requests
+    from jobagent import http, jd
+    asked = []
+
+    def fake(url, **kw):
+        asked.append(url)
+        if "/cxs/osv-edf/" in url:
+            raise requests.HTTPError("422 Client Error")
+        return {"jobPostingInfo": {"jobDescription": "<p>Summer 2027</p>", "location": "Remote"}}
+
+    monkeypatch.setattr(http, "get_json", fake)
+    d = jd._workday("https://osv-edf.wd5.myworkdayjobs.com/Confidential/job/Remote---US-Home/Intern_REQ-1", "EDF")
+    assert d is not None and "Summer 2027" in d.text
+    assert [u.split("/cxs/")[1].split("/")[0] for u in asked] == ["osv-edf", "osv_edf"]

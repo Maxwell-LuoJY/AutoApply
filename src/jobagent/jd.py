@@ -146,7 +146,14 @@ def _workday(url: str, company: str) -> JobDetail | None:
         return None
     i = segs.index("job")
     site, rest = segs[i - 1], [s for s in segs[i + 1:] if s != "apply"]
-    d = http.get_json(f"https://{p.netloc}/wday/cxs/{tenant}/{site}/job/{'/'.join(rest)}")
+    path = f"/{site}/job/{'/'.join(rest)}"
+    try:
+        d = http.get_json(f"https://{p.netloc}/wday/cxs/{tenant}{path}")
+    except requests.HTTPError:
+        if "-" not in tenant:
+            raise
+        # the host says osv-edf, the tenant is osv_edf (Environmental Defense Fund: 422 three times)
+        d = http.get_json(f"https://{p.netloc}/wday/cxs/{tenant.replace('-', '_')}{path}")
     info = d.get("jobPostingInfo") or {}
     return JobDetail(text=html_to_text(info.get("jobDescription", "")), via="workday",
                      location=info.get("location", ""))
