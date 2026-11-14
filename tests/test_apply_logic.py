@@ -893,6 +893,10 @@ def test_inbox_triage_keeps_confirmations_and_catches_disguised_rejections():
     assert triage("Alex, thanks for being a valued member", "LinkedIn Premium <x@linkedin.com>") == "skip"
     assert triage("Thank you for signing up for Newmont Job Alerts", "jobs@newmont.com") == "skip"
     assert triage("Your HackerRank assessment invitation", "noreply@hackerrank.com") == "classify"
+    # Dee Zee's HR wrote in person: a phone-call request, then a proposed time in a reply (both were skipped)
+    assert triage("Dee Zee application", "Stephanie Koogler <skoogler@deezee.com>") == "classify"
+    assert triage("RE: [EXTERNAL]Re: Dee Zee application", "Stephanie Koogler <skoogler@deezee.com>") == "classify"
+    assert triage("Your weekly digest", "news@example.com") == "skip"
 
 
 def test_cumulative_stats_count_mail_and_agent_submissions(tmp_path, monkeypatch):

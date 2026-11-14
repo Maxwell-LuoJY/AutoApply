@@ -605,3 +605,34 @@ def test_highest_completed_degree_is_not_the_one_in_progress():
                                profile, ROW)[0].fix == "Bachelor's degree"
     for ok in ("What is the highest level of education you are pursuing or have completed?", "Highest level of education"):
         assert audit.rule_problems([_f(0, "select", ok, "Master's Degree (ex. MA, MS, ME'd)", options=opts)], profile, ROW) == []
+
+
+def test_selected_placeholder_option_reads_as_empty():
+    # Zotec (JazzHR): "-- No answer --" is selected and has a value; "No" in it passed for the answer No
+    from playwright.sync_api import sync_playwright
+    from jobagent.apply import forms
+    html = """<form id="f"><label for="q">Will you now or in the future require visa sponsorship?</label>
+      <select id="q" required><option value="x" selected>-- No answer --</option><option value="1">Yes</option>
+      <option value="2">No</option></select></form>"""
+    with sync_playwright() as p:
+        b = p.chromium.launch()
+        page = b.new_page()
+        page.set_content(html)
+        f = forms.snapshot(page, "#f").fields[0]
+        assert f["value"] == "" and f["options"] == ["Yes", "No"] and forms.is_empty(f)
+        b.close()
+
+
+def test_visible_recaptcha_checkbox_is_a_captcha_but_the_invisible_badge_is_not():
+    # Zotec (JazzHR): a required "I'm not a robot" box; the run filled the form, clicked Submit and got "Please verify."
+    from playwright.sync_api import sync_playwright
+    from jobagent.apply import forms
+    frame = '<iframe src="data:text/html,recaptcha/api2/anchor?k=x&size={size}" style="width:304px;height:{h}px"></iframe>'
+    with sync_playwright() as p:
+        b = p.chromium.launch()
+        page = b.new_page()
+        page.set_content("<form id='f'><input id='a'>" + frame.format(size="normal", h=78) + "</form>")
+        assert forms.snapshot(page, "#f").captcha is True
+        page.set_content("<form id='f'><input id='a'>" + frame.format(size="invisible", h=60) + "</form>")
+        assert forms.snapshot(page, "#f").captcha is False
+        b.close()

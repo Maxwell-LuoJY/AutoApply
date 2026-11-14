@@ -35,7 +35,10 @@ _CANDIDATE = re.compile(
     r"interview|schedul|availability|coffee chat|phone screen|superday|next step|task awaits|action required|"
     r"complete your|final step|finish your|invit|challenge|screening|unfortunately|regret|not (be )?moving forward|"
     r"update on your|application status|status update|we've got an update|decision|offer|"
-    r"important information about your application")  # Greenhouse's rejection subject (Lumbermen's, Sigma)
+    r"important information about your application|"  # Greenhouse's rejection subject (Lumbermen's, Sigma)
+    # a recruiter writing in person: Dee Zee's HR asked for a phone call under "Dee Zee application" and proposed a
+    # time in a reply; neither reached the brief, and the application was closed for "unable to connect" (2026-11-13)
+    r"\bapplication\b|internship|\bposition\b|\brole\b|opportunit|\bresume\b|^\s*(re|fwd?)\s*:")
 _CANDIDATE_SENDER = re.compile(r"(?i)hackerrank|codesignal|codility|hirevue|karat|shl\.com|pymetrics|harver|goodtime|"
                                r"modernloop|calendly|paradox\.ai|gem\.com|ashbyhq|greenhouse|lever\.co|myworkday|icims")
 _NOT_CANDIDATE = re.compile(r"(?i)security code|verify your candidate account|verification code|job alert|recommended|"

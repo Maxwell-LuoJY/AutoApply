@@ -229,8 +229,11 @@
     const base = { id: tagId(el), label: stripMarks(label), required: isRequired(el, label, null), placeholder: el.getAttribute('placeholder') || '' };
 
     if (tag === 'select') {
-      const opts = Array.from(el.options).map((o) => clean(o.text)).filter((t) => t && !/^(select|choose|please select|--)/i.test(t));
-      fields.push({ ...base, kind: 'select', options: opts.slice(0, 400), option_count: opts.length, value: el.selectedIndex >= 0 && el.value ? clean(el.options[el.selectedIndex].text) : '' });
+      const placeholder = (t) => /^(select|choose|please select|--)/i.test(t);
+      const opts = Array.from(el.options).map((o) => clean(o.text)).filter((t) => t && !placeholder(t));
+      // Zotec (JazzHR): the selected placeholder "-- No answer --" has a value, and "No" in it passed for an answer
+      const picked = el.selectedIndex >= 0 && el.value ? clean(el.options[el.selectedIndex].text) : '';
+      fields.push({ ...base, kind: 'select', options: opts.slice(0, 400), option_count: opts.length, value: placeholder(picked) ? '' : picked });
     } else if (el.getAttribute('data-uxi-widget-type') === 'selectinput') {
       // Workday search-and-pick prompt; selection is announced as "1 item selected, <value>"
       const box = el.closest('[data-automation-id="multiSelectContainer"]') || el.parentElement;
@@ -300,7 +303,11 @@
     try { host = new URL(f.src).hostname; } catch (e) { /* about:blank etc. */ }
     return { src: f.src || '', host, w: Math.round(r.width), h: Math.round(r.height) };
   });
-  const captcha = frames.some((f) => f.h > 100 && /recaptcha|hcaptcha|challenges\.cloudflare\.com|turnstile|arkoselabs|funcaptcha/.test(f.src)) ||
+  // A visible "I'm not a robot" checkbox (~78px) is one too: Zotec's JazzHR form required it ("Please verify.")
+  const checkbox = (f) => f.h >= 70 && /recaptcha\/api2\/anchor|recaptcha\/enterprise\/anchor|hcaptcha\.com\/.*checkbox/.test(f.src)
+    && !/size=invisible/.test(f.src);
+  const captcha = frames.some((f) => (f.h > 100 && /recaptcha|hcaptcha|challenges\.cloudflare\.com|turnstile|arkoselabs|funcaptcha/.test(f.src))
+    || checkbox(f)) ||
     /just a moment|verify you are human|are you a robot|access (is temporarily restricted|denied)|unusual activity from your (device|network)|automated \(bot\) activity/i
       .test(document.title + ' ' + text(document.body).slice(0, 800));
 
