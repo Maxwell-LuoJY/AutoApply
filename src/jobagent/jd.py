@@ -189,6 +189,59 @@ def _oracle(url: str, company: str) -> JobDetail | None:
                      location=it.get("PrimaryLocation", ""))
 
 
+# ------------------------------------------------------------------ Workable / BambooHR / Dover
+# Their job pages are JavaScript shells: the generic reader got 5–70 characters (Bask and Falcomm on Workable,
+# SecurityMetrics on BambooHR, Rivet on Dover, 2026-11). Each page loads the JD from a public JSON endpoint.
+
+def _join_place(*parts) -> str:
+    return ", ".join(p for p in parts if p)
+
+
+def _workable(url: str, company: str) -> JobDetail | None:
+    m = re.search(r"apply\.workable\.com/([\w-]+)/j/([A-Za-z0-9]+)", url)
+    if not m:
+        return None
+    d = http.get_json(f"https://apply.workable.com/api/v2/accounts/{m.group(1)}/jobs/{m.group(2)}")
+    loc = d.get("location") or {}
+    place = _join_place(loc.get("city"), loc.get("region"), loc.get("country"))
+    if d.get("remote") or d.get("workplace") == "remote":
+        place = f"Remote ({place})" if place else "Remote"
+    text = "\n".join(html_to_text(d.get(k) or "") for k in ("description", "requirements", "benefits"))
+    return JobDetail(text=text, via="workable", location=place)
+
+
+def _bamboohr(url: str, company: str) -> JobDetail | None:
+    m = re.search(r"https?://([\w-]+)\.bamboohr\.com/careers/(\d+)", url)
+    if not m:
+        return None
+    d = (http.get_json(f"https://{m.group(1)}.bamboohr.com/careers/{m.group(2)}/detail").get("result") or {})
+    job = d.get("jobOpening") or {}
+    loc = job.get("location") or {}
+    place = _join_place(loc.get("city"), loc.get("state"), loc.get("addressCountry"))
+    if str(job.get("locationType")) == "1":  # BambooHR: 0 on-site, 1 remote, 2 hybrid
+        place = f"Remote ({place})" if place else "Remote"
+    return JobDetail(text=html_to_text(job.get("description") or ""), via="bamboohr", location=place)
+
+
+_UUID = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
+
+
+def _dover(url: str, company: str) -> JobDetail | None:
+    m = _UUID.search(urlsplit(url).path)
+    if not m:
+        return None
+    # app.dover.io/apply/job/<id> redirects to jobs.dover.com/job/<id>, whose script reads this endpoint
+    d = http.get_json(f"https://app.dover.com/api/v1/inbound/application-portal-job/{m.group(0)}")
+    places = []
+    for loc in d.get("locations") or []:
+        name = (loc.get("location_option") or {}).get("display_name") or ""
+        places.append(f"Remote ({name})" if loc.get("location_type") == "REMOTE" else name)
+    text = html_to_text(d.get("user_provided_description") or "")
+    if isinstance(d.get("visa_support"), bool):  # shown on the Dover page as a separate field, not in the text
+        text += f"\nVisa sponsorship offered: {'yes' if d['visa_support'] else 'no'}"
+    return JobDetail(text=text, via="dover", location="; ".join(p for p in places if p))
+
+
 # ------------------------------------------------------------------ generic page
 
 def _generic(url: str, company: str) -> JobDetail | None:
@@ -217,11 +270,24 @@ _FETCHERS = {
     "smartrecruiters": _smartrecruiters,
     "oracle": _oracle,
 }
+# Sites detected as "other" (the apply step treats them generically), recognised here by host
+_HOST_FETCHERS = (
+    (re.compile(r"(^|\.)workable\.com$"), _workable),
+    (re.compile(r"\.bamboohr\.com$"), _bamboohr),
+    (re.compile(r"(^|\.)dover\.(io|com)$"), _dover),
+)
+
+
+def _fetcher_for(url: str, ats: str):
+    if ats in _FETCHERS:
+        return _FETCHERS[ats]
+    host = urlsplit(url).netloc.lower()
+    return next((f for pat, f in _HOST_FETCHERS if pat.search(host)), None)
 
 
 def fetch_detail(url: str, ats: str, company: str) -> JobDetail | None:
     """Return the JD, or None if it can't be read without a browser. Network errors propagate."""
-    fetcher = _FETCHERS.get(ats)
+    fetcher = _fetcher_for(url, ats)
     detail = None
     if fetcher:
         try:

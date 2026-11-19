@@ -11,7 +11,7 @@ from __future__ import annotations
 import logging
 import re
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from . import config, pipeline, report
@@ -136,6 +136,9 @@ def write_report(db: DB, fs, ss, results: list, emails: list | None, started: da
             for q in o.reason.split("：", 1)[1].split("（可在")[0].split("；"):
                 questions.setdefault(q.strip(), []).append(r["company"])
     unsure = db.rows(f"stage = 'unsure' AND active = 1 AND screened_at >= '{started.astimezone():%Y-%m-%dT%H:%M}'")
+    # the last 24 hours, not just this run: a screen run on its own before `daily` would otherwise hide them
+    missing_new = report.jd_missing(db, f"{(started - timedelta(days=1)).astimezone():%Y-%m-%dT%H:%M}")
+    missing_all = report.jd_missing(db)
 
     outcome = " / ".join(f"{report.STAGE_LABEL.get(k, k)} {v}" for k, v in sorted(ss.outcomes.items())) or "无"
     stale = len(db.rows("stage = 'filtered' AND reason LIKE '发布超过%'"))
@@ -179,6 +182,11 @@ def write_report(db: DB, fs, ss, results: list, emails: list | None, started: da
                 "要投：`uv run jobagent mark <ID> apply`；不投：`uv run jobagent mark <ID> skip`"]
         out += [f"- [{_cell(r['company'])} — {_cell(r['title'])}]({r['url']}) — {_cell(r['reason'])[:120]}（ID `{r['id']}`）"
                 for r in unsure]
+    if missing_all:
+        out += ["", f"## 📄 JD 没读到，程序不会自动投（过去 24 小时新增 {len(missing_new)} 个，累计 {len(missing_all)} 个）", "",
+                report.JD_MISSING_HOWTO + "累计的全部列表在 `manual_apply.md`。", ""]
+        out += [f"- [{_cell(r['company'])} — {_cell(r['title'])}]({r['url']}) — {r['ats']}（ID `{r['id']}`）"
+                for r in missing_new] or ["过去 24 小时没有新增。"]
     out += ["", f"## ✅ 今天已提交（{len(by['submitted'])} 个）", ""]
     out += [f"- {_cell(r['company'])} — {_cell(r['title'])}" for r, _ in by["submitted"]] or ["今天没有。"]
     out += ["", "以前积累的、需要手动投的全部岗位见 `manual_apply.md`。手动投完一个就运行 `uv run jobagent mark <ID> applied`。"]
