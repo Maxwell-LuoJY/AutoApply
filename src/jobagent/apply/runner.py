@@ -2,10 +2,12 @@
 from __future__ import annotations
 
 import fcntl
+import json
 import logging
 import os
 import queue
 import re
+import sqlite3
 import threading
 import time
 from contextlib import contextmanager
@@ -40,6 +42,15 @@ LABEL = {"submitted": "✅ 已提交", "dry_run": "🟡 试运行：已填完", 
 SOURCE_LABEL = {"Simplify": "SimplifyJobs", "SpeedyApply": "SpeedyApply"}
 # unknown sites that show no fillable form need a person (usually an account wall); known ATSes get retried
 _MANUAL = {True: "（这个网站可能需要先登录，请手动投）", False: ""}
+# The attempts row written right before a real submit click. _record's row for the outcome supersedes it; if the run
+# dies in between (killed session, crash, closed laptop, minutes into an emailed-code wait) it stays the job's latest
+# attempt, and the next run must not apply again: recover_interrupted() sends the job to the manual list instead.
+SUBMITTING = "submitting"
+# every "the click may have gone through" reason starts with 点了提交但: report.write_manual_list lists those under
+# 可能已经提交 (check the inbox first) instead of with the jobs to apply to by hand
+INTERRUPTED = ("点了提交但程序没等到结果就中断了（{at} 点的提交；进程被关掉、崩溃或电脑休眠），可能已经提交："
+               "请先运行 `uv run jobagent brief` 或查邮箱有没有确认信，确认没投成再重新排队（jobagent mark <ID> apply）")
+AFTER_CLICK = "点了提交但之后出错（{error}），可能已经提交，请先查邮箱有没有确认信"
 
 
 @dataclass
@@ -72,6 +83,8 @@ class ApplyContext:
     seen: list = field(default_factory=list)           # every field shown on earlier pages, with what it displayed
     field_options: dict = field(default_factory=dict)  # (label, nth) → dropdown options read while filling
     audit_settled: dict = field(default_factory=dict)  # (label, value) that stayed after re-entering the fix
+    db_path: Path | None = None                        # where the "submitting" marker goes before a real submit
+    submit_clicked: bool = False                       # this job's submit button was (maybe) clicked
 
 
 def read_credentials(path: Path) -> tuple[str, str] | None:
@@ -363,10 +376,26 @@ def _enter_code(page: Page, snap: forms.Snapshot, before_ids: set[str], code: st
     page.wait_for_timeout(800)
 
 
+def _mark_submitting(db_path: Path, row, qa: list, shots: list, url: str) -> None:
+    """Record that a real submit is about to be clicked. On a connection of its own: this runs in a worker thread,
+    and the run's DB connection belongs to the main thread."""
+    marks = DB(db_path)
+    try:
+        marks.add_attempt(row["id"], "submit", SUBMITTING, "正在点提交，还没有结果", qa, shots, url)
+    finally:
+        marks.close()  # close() commits
+
+
 def _submit(page: Page, adapter: Adapter, sub: dict, ctx: ApplyContext, qa: list, shots: list, shot) -> Outcome:
     since = datetime.now(timezone.utc)
     before_ids = {f["id"] for f in forms.snapshot(page, None).fields}
     shot("before-submit")
+    if ctx.db_path is not None:
+        try:
+            _mark_submitting(ctx.db_path, ctx.row, qa, shots, page.url)
+        except sqlite3.Error as e:  # without the marker a crash after the click could lead to a second application
+            raise Failed(f"没能记下“正在提交”的标记（{e}），为避免中断后重复投递，这次没有提交") from e
+    ctx.submit_clicked = True  # set before the click: a click that raised may still have reached the site
     click_button(page, sub)
     deadline, code_done, waited_for_human, snap = time.time() + 30, False, False, None
     while time.time() < deadline:
@@ -414,7 +443,7 @@ def apply_job(session: BrowserSession, row, ctx: ApplyContext) -> Outcome:
     ctx.workday_auth_attempts, ctx.row = 0, row
     ctx.workday_signin_tried = ctx.workday_account_created = ctx.workday_verified = False
     ctx.answer_cache, ctx.corrections, ctx.audit_rounds, ctx.seen, ctx.field_options = {}, {}, 0, [], {}
-    ctx.audit_settled = {}
+    ctx.audit_settled, ctx.submit_clicked = {}, False
     resume_pdf = resolve_file(ctx.profile, row, "resume", "")
 
     def shot(tag: str) -> None:
@@ -520,7 +549,9 @@ def apply_job(session: BrowserSession, row, ctx: ApplyContext) -> Outcome:
                     return _submit(page, adapter, sub, ctx, qa, shots, shot)
                 raise Failed(f"超过 {MAX_STEPS} 步还没到提交页")
             except PlaywrightError:
-                if reloads < 2 and adapter.recover(page, forms.snapshot(page, adapter.root)):
+                # never reload and fill again once submit was clicked: that would be a second application
+                if not ctx.submit_clicked and reloads < 2 \
+                        and adapter.recover(page, forms.snapshot(page, adapter.root)):
                     reloads += 1
                     log.info("   页面出错，刷新后继续")
                     continue
@@ -531,10 +562,16 @@ def apply_job(session: BrowserSession, row, ctx: ApplyContext) -> Outcome:
         return Outcome(status, str(e), qa, shots, page.url)
     except PlaywrightError as e:
         shot("error")
-        return Outcome("failed", f"浏览器操作出错：{str(e).splitlines()[0][:200]}", qa, shots, page.url)
+        msg = f"浏览器操作出错：{str(e).splitlines()[0][:200] if str(e) else ''}"
+        if ctx.submit_clicked:  # not "failed": the application may be in, so it must not be applied to again
+            return Outcome("unconfirmed", AFTER_CLICK.format(error=msg), qa, shots, page.url)
+        return Outcome("failed", msg, qa, shots, page.url)
     except Exception as e:  # LLM/API/anything else: fail this job, keep the batch going
         shot("error")
         msg = f"{type(e).__name__}: {str(e).splitlines()[0][:200] if str(e) else ''}"
+        if ctx.submit_clicked:  # never "retry" (requeued in this same run) after the click
+            log.exception("处理 %s 时出错（已点提交）", row["id"])
+            return Outcome("unconfirmed", AFTER_CLICK.format(error=msg), qa, shots, page.url)
         if isinstance(e, (RateLimitError, Throttled)):
             return Outcome("retry", f"API 限流，稍后重试：{msg}", qa, shots, page.url)  # nothing was submitted
         log.exception("处理 %s 时出错", row["id"])
@@ -555,6 +592,27 @@ def _record(db: DB, row, out: Outcome, mode: str) -> None:
             "失败原因": "" if out.status == "submitted" else out.reason,
         }])
     db.commit()
+
+
+def recover_interrupted(db: DB) -> list[tuple[object, Outcome]]:
+    """Jobs whose latest attempt is still a "submitting" marker: an earlier run died between the submit click and
+    _record. The click may have gone through, so each is recorded as unconfirmed (manual list, applications.csv)
+    instead of staying in the queue. Call it under the apply lock: then no other run can be mid-submit."""
+    out = []
+    for a in db.latest_attempts(SUBMITTING):
+        row = db.get(a["job_id"])
+        if row is None:
+            continue
+        o = Outcome("unconfirmed", INTERRUPTED.format(at=a["at"][:16].replace("T", " ")),
+                    json.loads(a["answers"] or "[]"), json.loads(a["screenshots"] or "[]"), a["final_url"] or "")
+        if row["stage"] in ("applied", "skip", "done"):  # settled by hand (jobagent mark): only close the marker
+            db.add_attempt(row["id"], a["mode"], o.status, o.reason, o.answers, o.screenshots, o.url)
+            db.commit()
+            continue
+        _record(db, row, o, a["mode"])
+        log.warning("   %s %s — %s：%s", LABEL[o.status], row["company"], row["title"][:50], o.reason)
+        out.append((row, o))
+    return out
 
 
 def candidates(db: DB, ids: list[str] | None) -> list:
@@ -702,8 +760,8 @@ def _run_apply(db: DB, mode: str, target: int | None, ids: list[str] | None, hea
     shots_dir = config.DATA_DIR / "screenshots" / datetime.now().strftime("%Y-%m-%d")
     shots_dir.mkdir(parents=True, exist_ok=True)
 
-    results: list[tuple[object, Outcome]] = []
-    seen: set[str] = set()
+    results: list[tuple[object, Outcome]] = recover_interrupted(db)
+    seen: set[str] = {r["id"] for r, _ in results}  # not even when named on the command line: check the inbox first
     if not ids:
         try:
             pipeline.score_fit(db, llm)  # the queue is ordered by fit, so rate jobs screened before scores existed
@@ -737,7 +795,7 @@ def _run_apply(db: DB, mode: str, target: int | None, ids: list[str] | None, hea
 
     def worker(i: int) -> None:
         ctx = ApplyContext(llm=llm, profile=profile, mode=mode, mailbox=mailbox, credentials=credentials,
-                           shots_dir=shots_dir, headed=not headless,
+                           shots_dir=shots_dir, headed=not headless, db_path=db.path,
                            accounts_in_dry_run=allow_accounts or bool(cfg.get("accounts_in_dry_run", False)))
         profile_dir = config.DATA_DIR / ("browser-profile" if i == 0 else f"browser-profile-{i}")
         try:

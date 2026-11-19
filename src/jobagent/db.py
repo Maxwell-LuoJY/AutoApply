@@ -55,7 +55,9 @@ CREATE TABLE IF NOT EXISTS attempts (
     job_id      TEXT NOT NULL,
     at          TEXT NOT NULL,
     mode        TEXT NOT NULL,      -- dry_run | submit
-    status      TEXT NOT NULL,      -- submitted | dry_run | skip | blocked | unconfirmed | failed
+    status      TEXT NOT NULL,      -- submitted | dry_run | skip | blocked | unconfirmed | failed | retry,
+                                    -- or submitting: written just before a real submit click, superseded by the
+                                    -- outcome row (still the job's latest row = the run died mid-submit)
     reason      TEXT,
     answers     TEXT,               -- JSON list of {label, value, basis, error}
     screenshots TEXT,               -- JSON list of paths
@@ -75,6 +77,7 @@ CREATE TABLE IF NOT EXISTS inbox_items (     -- recruiting emails that may need 
     status      TEXT NOT NULL DEFAULT 'open',-- open | done | closed (auto) | expired
     note        TEXT
 );
+CREATE INDEX IF NOT EXISTS attempts_job ON attempts(job_id, id);
 CREATE INDEX IF NOT EXISTS inbox_status ON inbox_items(status, received);
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT);
 """
@@ -133,6 +136,12 @@ class DB:
             "INSERT INTO attempts (job_id, at, mode, status, reason, answers, screenshots, final_url) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
             (job_id, _now(), mode, status, reason, json.dumps(answers, ensure_ascii=False), json.dumps(screenshots), final_url),
         )
+
+    def latest_attempts(self, status: str) -> list[sqlite3.Row]:
+        """Attempts with this status that are still their job's most recent attempt, oldest first."""
+        latest = "SELECT MAX(id) FROM attempts GROUP BY job_id"
+        return self.conn.execute(f"SELECT * FROM attempts WHERE status = ? AND id IN ({latest}) ORDER BY id",
+                                 (status,)).fetchall()
 
     def meta(self, key: str, value: str | None = None) -> str | None:
         """Read a value from the meta table, or store one when `value` is given."""
