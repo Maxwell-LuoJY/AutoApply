@@ -7,10 +7,9 @@ Stages:
   done       applications.csv already has 已提交/跳过 (or too many failures)
   pending    passed hard rules, waiting for the JD/LLM screen
   error      JD fetch or LLM failed; retried next run
-  eligible   LLM says apply
+  eligible   LLM says apply (or the JD couldn't be read: tried unscreened)
   skip       LLM (or a form rule) says skip
   unsure     needs a human look
-  jd_missing could not read the JD without a browser
   applied    application submitted
   failed     technical failure while applying; retried (max 3 in applications.csv)
   blocked    needs a human (CAPTCHA, login, unanswerable question, unconfirmed submit)

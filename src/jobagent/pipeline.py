@@ -23,7 +23,7 @@ log = logging.getLogger("jobagent")
 REEVALUATED = ("new", "filtered", "duplicate", "pending", "error")
 # Settled stages that still lead somewhere (the apply queue, the manual list): a blocklisted company, a posting
 # older than max_age_days, or a co-op is pulled out of them.
-QUEUED = ("eligible", "unsure", "jd_missing", "manual", "blocked", "failed")
+QUEUED = ("eligible", "unsure", "manual", "blocked", "failed")
 SOURCE_LABEL = {"Simplify": "SimplifyJobs", "SpeedyApply": "SpeedyApply"}
 
 
@@ -190,6 +190,8 @@ def score_fit(db: DB, llm: LLM | None = None) -> int:
     """Give a fit score to eligible jobs that don't have one (screened before scores existed, or the reply lacked it).
     Returns how many got one; a job whose JD can't be read stays unrated and is tried again next time."""
     rows = db.rows("stage = 'eligible' AND active = 1 AND fit IS NULL")
+    # a JD that couldn't be read at screening won't be readable for a score either: don't ask again every run
+    rows = [r for r in rows if not json.loads(r["screen_json"] or "{}").get("jd_missing")]
     if not rows:
         return 0
     cfg = config.settings()

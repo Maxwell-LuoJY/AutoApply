@@ -170,9 +170,12 @@ def cover_letter_required(questions: list[dict] | None) -> bool:
     return any(q.get("required") and re.match(r"(?i)cover\s*letter", q.get("label", "")) for q in questions or [])
 
 
+JD_UNREAD = "JD 读不到，没有筛选，直接试投（投不成会进手动投递列表）"
+
+
 @dataclass
 class ScreenResult:
-    stage: str                 # eligible | skip | unsure | jd_missing
+    stage: str                 # eligible | skip | unsure
     reason: str
     data: dict = field(default_factory=dict)
 
@@ -181,7 +184,9 @@ def screen(row, llm: LLM, profile: dict, term: str, jd_max_chars: int) -> Screen
     """Screen one DB row. Network/LLM exceptions propagate so the caller can mark the row for retry."""
     detail: JobDetail | None = fetch_detail(row["url"], row["ats"], row["company"])
     if detail is None:
-        return ScreenResult("jd_missing", "不开浏览器读不到 JD，申请时在页面上核对", {})
+        # unscreened, but tried anyway: a failed attempt lands on the manual list (user, 2026-11-18). These used to
+        # wait in a jd_missing stage outside the apply queue, where nobody looked at them.
+        return ScreenResult("eligible", JD_UNREAD, {"jd_missing": True})
 
     meta = {"jd_via": detail.via, "jd_chars": len(detail.text)}
     if cover_letter_required(detail.questions):

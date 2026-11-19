@@ -1,6 +1,4 @@
-"""JD readers for sites whose job pages are JavaScript shells, and where JD-unread jobs are listed."""
-from datetime import datetime, timezone
-
+"""JD readers for sites whose job pages are JavaScript shells, and what happens when no reader gets the JD."""
 import pytest
 
 from jobagent import http, jd
@@ -70,38 +68,19 @@ def test_other_hosts_still_use_the_page_reader(monkeypatch):
     assert seen == ["https://careers.example.com/jobs/42"]
 
 
-def _missing_job(i: str, company: str) -> dict:
-    return {"id": i, "company": company, "title": "Software Engineering Intern", "url": f"https://jobs.example/{i}",
-            "ats": "other", "date_posted": 0, "reason": "不开浏览器读不到 JD，申请时在页面上核对", "resume": "SDE"}
+def test_unread_jd_is_tried_unscreened(monkeypatch):
+    from jobagent import screen as sc
+    monkeypatch.setattr(sc, "fetch_detail", lambda url, ats, company: None)
+    row = {"url": "https://careers-example.icims.com/jobs/1/job", "ats": "icims", "company": "Example"}
+    res = sc.screen(row, llm=None, profile={}, term="Summer 2027", jd_max_chars=1000)   # the LLM is never asked
+    assert res.stage == "eligible" and res.reason == sc.JD_UNREAD and res.data == {"jd_missing": True}
 
 
-class _FakeDB:
-    """Only JD-unread jobs exist; every other query comes back empty."""
+def test_fit_scoring_leaves_unread_jds_alone():
+    import json
+    from jobagent import pipeline
 
-    def __init__(self, rows):
-        self.missing = rows
-
-    def rows(self, where="1", params=(), **kw):
-        return list(self.missing) if "jd_missing" in where else []
-
-
-def test_manual_list_shows_jd_unread_jobs():
-    from jobagent import report
-    path = report.write_manual_list(_FakeDB([_missing_job("m1", "Rivet")]))
-    text = path.read_text(encoding="utf-8")
-    assert "JD 没读到 1 个" in text
-    assert "## JD 没读到：程序不会自动投（1 个）" in text
-    assert "[Software Engineering Intern](https://jobs.example/m1)" in text and "`m1`" in text
-
-
-def test_daily_report_lists_jd_unread_jobs(tmp_path, monkeypatch):
-    from jobagent import daily
-    from jobagent.pipeline import FetchStats, ScreenStats
-    monkeypatch.setattr(daily, "REPORT_DIR", tmp_path)
-    db = _FakeDB([_missing_job("m1", "Rivet"), _missing_job("m2", "Operio")])
-    path = daily.write_report(db, FetchStats(per_source={"Simplify": 1}, new=2), ScreenStats(attempted=2), [],
-                              [], datetime.now(timezone.utc), None)
-    text = path.read_text(encoding="utf-8")
-    assert "JD 没读到，程序不会自动投（过去 24 小时新增 2 个，累计 2 个）" in text
-    assert "[Rivet — Software Engineering Intern](https://jobs.example/m1)" in text
-    assert "mark <ID> apply" in text
+    class FakeDB:
+        def rows(self, where="1", params=(), **kw):
+            return [{"screen_json": json.dumps({"jd_missing": True}), "company": "Example", "title": "SWE Intern"}]
+    assert pipeline.score_fit(FakeDB(), llm=None) == 0   # nothing fetched, no LLM built

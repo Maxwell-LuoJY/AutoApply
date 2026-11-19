@@ -12,7 +12,7 @@ from .pipeline import FetchStats, ScreenStats, pinned, queue_order
 from .rules import posted_today
 
 STAGE_LABEL = {
-    "eligible": "可投", "skip": "跳过", "unsure": "需确认", "jd_missing": "JD 未读到", "error": "出错待重试",
+    "eligible": "可投", "skip": "跳过", "unsure": "需确认", "error": "出错待重试",
     "pending": "待筛选", "filtered": "规则过滤", "duplicate": "重复", "done": "已处理过",
     "applied": "已投递", "manual": "待手动投递", "blocked": "待手动投递", "failed": "待手动投递",
 }
@@ -47,13 +47,12 @@ def write_shortlist(db: DB, cap: int, day: str | None = None) -> Path:
     day = day or datetime.now().strftime("%Y-%m-%d")
     top, total = shortlist(db, cap)
     unsure = db.rows("stage = 'unsure' AND active = 1", limit=30)
-    missing = db.rows("stage = 'jd_missing' AND active = 1", limit=30)
 
     out = [
         f"# 待投清单 {day}",
         "",
         f"生成于 {datetime.now():%H:%M} · 可投 {total} 个（按投递顺序列前 {len(top)} 个：📌 指定先投，再 24 小时内发布的 🆕，再按匹配度；每日上限 {cap}）"
-        f" · 需确认 {len(unsure)} · JD 未读到 {len(missing)}",
+        f" · 需确认 {len(unsure)}",
         "",
         "## 可投",
         "",
@@ -74,12 +73,6 @@ def write_shortlist(db: DB, cap: int, day: str | None = None) -> Path:
             evidence = (json.loads(r["screen_json"] or "{}").get("llm") or {}).get("evidence", "")
             out.append(f"| {_cell(r['company'])} | [{_cell(r['title'])}]({r['url']}) | {_cell(r['reason'])} "
                        f"| {_cell(evidence[:160])} | `{r['id']}` |")
-    if missing:
-        out += ["", "## JD 未读到（申请时在页面上核对资格）", "",
-                "| 公司 | 岗位 | 系统 | 发布 | ID |", "|---|---|---|---|---|"]
-        for r in missing:
-            out.append(f"| {_cell(r['company'])} | [{_cell(r['title'])}]({r['url']}) | {r['ats']} "
-                       f"| {_age(r['date_posted'])} | `{r['id']}` |")
 
     config.SHORTLIST_DIR.mkdir(parents=True, exist_ok=True)
     path = config.SHORTLIST_DIR / f"{day}.md"
@@ -131,31 +124,17 @@ def append_run_log(fs: FetchStats | None, ss: ScreenStats | None, shortlist_path
     return path
 
 
-# jd_missing is a settled stage outside the apply queue: unless listed here it sat unseen (user, 2026-11-18)
-JD_MISSING_HOWTO = ("不开浏览器读不到这些岗位的 JD，程序没法判断能不能投，所以不会自动投。看一下 JD：想让程序投就 "
-                    "`uv run jobagent mark <ID> apply`，自己投完就 `mark <ID> applied`，不投就 `mark <ID> skip`。")
-
-
-def jd_missing(db: DB, since: str | None = None) -> list:
-    """Active jobs whose JD couldn't be read (newest first); `since` (local ISO time) keeps only those screened after it."""
-    if since:
-        return db.rows("stage = 'jd_missing' AND active = 1 AND screened_at >= ?", params=(since,), order="date_posted DESC")
-    return db.rows("stage = 'jd_missing' AND active = 1", order="date_posted DESC")
-
-
 def write_manual_list(db: DB) -> Path:
     """manual_apply.md: every job the agent couldn't finish, with the link and why — rebuilt after each run."""
     rows = db.rows("stage IN ('manual', 'blocked', 'failed') AND active = 1")
     unconfirmed = [r for r in rows if (r["reason"] or "").startswith("点了提交但")]
     todo = [r for r in rows if r not in unconfirmed]
     essays = db.rows("stage = 'skip' AND active = 1 AND (reason LIKE '需要开放式回答%' OR reason LIKE '%cover letter%')")
-    missing = jd_missing(db)
 
     out = [
         "# 需要手动投递的岗位",
         "",
-        f"更新于 {datetime.now():%Y-%m-%d %H:%M} · 待手动投 {len(todo)} 个 · 可能已提交 {len(unconfirmed)} 个 · 需写短文 {len(essays)} 个"
-        f" · JD 没读到 {len(missing)} 个",
+        f"更新于 {datetime.now():%Y-%m-%d %H:%M} · 待手动投 {len(todo)} 个 · 可能已提交 {len(unconfirmed)} 个 · 需写短文 {len(essays)} 个",
         "",
         "投完一个就运行 `uv run jobagent mark <ID> applied`：它会从这里消失，并在 applications.csv 记一条\"已提交\"，"
         "agent 以后不会再投它。不想投的：`uv run jobagent mark <ID> skip`。",
@@ -170,11 +149,6 @@ def write_manual_list(db: DB) -> Path:
         out += ["", "## 按规则跳过：要写短文或 cover letter（想投的话可以手动投）", "",
                 "| 公司 | 岗位 | 需要什么 | ID |", "|---|---|---|---|"]
         out += [f"| {_cell(r['company'])} | [{_cell(r['title'])}]({r['url']}) | {_cell(r['reason'])} | `{r['id']}` |" for r in essays]
-    if missing:
-        out += ["", f"## JD 没读到：程序不会自动投（{len(missing)} 个）", "", JD_MISSING_HOWTO, "",
-                "| # | 公司 | 岗位 | 系统 | 发布 | ID |", "|---|---|---|---|---|---|"]
-        out += [f"| {i} | {_cell(r['company'])} | [{_cell(r['title'])}]({r['url']}) | {r['ats']} | {_age(r['date_posted'])} "
-                f"| `{r['id']}` |" for i, r in enumerate(missing, 1)]
     path = config.ROOT / "manual_apply.md"
     path.write_text("\n".join(out) + "\n", encoding="utf-8")
     return path
