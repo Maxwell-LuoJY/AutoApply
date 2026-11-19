@@ -146,6 +146,7 @@ def screen_pending(db: DB, limit: int | None = None, llm: LLM | None = None, ids
                 stage = "unsure" if attempts >= sc["max_attempts"] else "error"
                 reason = f"JD/LLM 出错 {attempts} 次：{type(e).__name__}: {str(e)[:160]}"
                 db.update(r["id"], stage=stage, reason=reason, screen_attempts=attempts, screened_at=now)
+                db.commit()  # not held until the next LLM reply: a submit marker on another connection waits on it
                 stats.outcomes[stage] = stats.outcomes.get(stage, 0) + 1
                 log.warning("[%s] %s — %s：%s", stage, r["company"], r["title"], reason)
                 continue
