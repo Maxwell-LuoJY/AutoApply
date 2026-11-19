@@ -136,10 +136,11 @@
     pickers.get(box).push({ inp, part: m[1] });
   }
   // RBC titles them "Your Work Experience 2" / "Your Experience 1" / "Your Education 1", Marvell "Professional
-  // Experience 1", Jabil "Work or Other Experience 5": all named "Work Experience N" / "Education N" like everywhere else
-  const ENTRY = /^(your\s+)?(professional\s+)?(work( or other)? experience|experience|employment|education)\s*\d+$/i;
-  const entryLabel = (t) => /education/i.test(t) ? t.replace(/^.*?education/i, 'Education')
-    : t.replace(/^.*?(experience|employment)/i, 'Work Experience');
+  // Experience 1", Jabil "Work or Other Experience 5", Salesforce "Work History (Optional) 1" / "Education (Required) 1":
+  // all named "Work Experience N" / "Education N" like everywhere else (section headings: forms.WORK_SECTION)
+  const ENTRY = new RegExp(String.raw`^(your\s+)?(professional\s+)?(work( or other)? experience|experience|employment|`
+    + String.raw`(employment|work) history|education)(\s*\((optional|required)\))?\s*\d+$`, 'i');
+  const entryLabel = (t) => `${/education/i.test(t) ? 'Education' : 'Work Experience'} ${t.match(/\d+$/)[0]}`;
   const entryName = (el) => {  // "Work Experience 2": which repeated block a From/To picker belongs to
     for (let a = el.parentElement, d = 0; a && a !== root && d < 10; a = a.parentElement, d++) {
       const ids = a.getAttribute('aria-labelledby');

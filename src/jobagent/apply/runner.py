@@ -175,6 +175,15 @@ def _fill_step(page: Page, adapter: Adapter, snap: forms.Snapshot, row, ctx: App
                     and f["value"] and forms.best_option(it.value, [f["value"]], fuzzy=False):
                 qa[qa_index]["error"] = None  # the redrawn field already holds the wanted value (e.g. auto-selected)
                 continue
+            if f["kind"] == "combobox" and not f.get("options"):
+                # planned without its options (Salesforce, 2026-11-13: the degree list wasn't read, the planner wrote
+                # "B.Eng." and the list has only GED / HS / AA / BA / BS): read them now and let the resume decide
+                forms.load_dropdown_options(page, [f])
+                page_fields = [g for g in fresh.values() if g is not f] + [f]
+                if (fix := answers._education_by_school(page_fields, row).get(f["id"])) is not None:
+                    log.info("   「%s」按简历改选 %s（%r 不在选项里）", f["label"][:60], fix.value, it.value)
+                    it = answers.Item(f, fix.value, fix.basis)
+                    qa[qa_index].update(value=_show(it.value), basis=it.basis)
             err = forms.fill_field(page, f, it.value, lambda v, f=f: resolve_file(ctx.profile, row, v, f.get("accept", "")))
             qa[qa_index]["error"] = err
             if err:

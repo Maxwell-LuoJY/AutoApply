@@ -21,6 +21,15 @@ TEXT_KINDS = {"text", "email", "tel", "url", "number", "date", "month", "textare
 CHOICE_KINDS = {"select", "radio", "buttons", "combobox", "checkbox"}
 _NO_OPTIONS = re.compile(r"(?i)^(no options|no results|no matches|no items|loading|searching|type to search|start typing)")
 
+# Headings of the repeated work / education sections (entries repeat them with a number: "Work History (Optional) 1").
+# RBC "Your Experience", Marvell "Professional Experience", Jabil "Work or Other Experience", Salesforce
+# "Work History (Optional)" / "Education (Required)". Shared by the Workday entry counter and both review-page checks;
+# extract.js names the entries with its own copy (ENTRY), keep the two in step.
+_SECTION_TAG = r"(?:\s*\((?:optional|required)\))?"
+WORK_SECTION = (r"(?:(?:your |professional )?(?:work (?:or other )?)?experience|(?:your )?(?:employment|work) history)"
+                + _SECTION_TAG)
+EDU_SECTION = r"(?:your )?education" + _SECTION_TAG
+
 # Marks the currently open dropdown's options with data-ja-opt=<index> and returns their texts.
 # Selected "pills" of other Workday widgets also use promptOption, so anything inside a selected-items list is skipped.
 _OPTIONS_JS = """() => {

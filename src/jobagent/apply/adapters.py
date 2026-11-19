@@ -14,7 +14,7 @@ from playwright.sync_api import Error as PlaywrightError
 from playwright.sync_api import Page
 
 from ..rules import normalize_url
-from .forms import Snapshot
+from .forms import EDU_SECTION, WORK_SECTION, Snapshot
 
 log = logging.getLogger("jobagent")
 
@@ -358,10 +358,8 @@ class Ashby(Adapter):
 # Add / Add Another button with data-ja-add=work|edu. Walks the page in document order between section headings.
 _ENTRIES_JS = """(deleteLast) => {
   const txt = (e) => (e.innerText || '').replace(/\\s+/g, ' ').trim();
-  // RBC: "Your Experience", Marvell: "Professional Experience", Jabil: "Work or Other Experience" (never the page
-  // title "My Experience")
-  const SECTION = {work: /^(your |professional )?(work( or other)? )?experience$|^(your )?(employment|work) history$/i,
-                   edu: /^(your )?education$/i};
+  // forms.WORK_SECTION / EDU_SECTION, filled in below (never the page title "My Experience")
+  const SECTION = {work: new RegExp(__WORK__, 'i'), edu: new RegExp(__EDU__, 'i')};
   const out = {}, dels = {}; let cur = null, curTag = null;
   document.querySelectorAll('[data-ja-add]').forEach((e) => e.removeAttribute('data-ja-add'));
   for (const el of document.querySelectorAll('h1, h2, h3, h4, h5, [role="heading"], button')) {
@@ -383,7 +381,7 @@ _ENTRIES_JS = """(deleteLast) => {
     return true;
   }
   return out;
-}"""
+}""".replace("__WORK__", json.dumps(f"^{WORK_SECTION}$")).replace("__EDU__", json.dumps(f"^{EDU_SECTION}$"))
 
 # Click the delete button next to every uploaded resume file (a name starting with `prefix`, the part all the
 # applicant's resume file names share) that isn't the current one.
@@ -543,9 +541,7 @@ class Workday(Adapter):
         """Review page: every resume job and school must appear (when the form has those sections at all)."""
         text = page.locator("body").inner_text()
         targets, problems = self._targets(ctx), []
-        # RBC "Your Experience", Marvell "Professional Experience", Jabil "Work or Other Experience"
-        work = r"(?:your |professional )?(?:work (?:or other )?)?experience"
-        for key, section, name in (("work", work, "Work Experience"), ("edu", r"(?:your )?education", "Education")):
+        for key, section, name in (("work", WORK_SECTION, "Work Experience"), ("edu", EDU_SECTION, "Education")):
             n = targets.get(key, 0)
             if not n or not re.search(rf"(?im)^\s*{section}\s*$", text):
                 continue  # this form has no such section

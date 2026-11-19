@@ -301,6 +301,19 @@ def test_degree_rule_never_picks_another_field():
     assert _education_by_school(fields, {"resume": "AIE"})["d1"].value == "Master of Science (M.S.)"
 
 
+def test_bachelor_of_engineering_takes_bs_from_an_abbreviation_list():
+    # Salesforce (2026-11-13): "GED / HS / AA / BA / BS / …" with no B.E.; the planner's "B.Eng." failed, the retry
+    # reads the options and asks this rule, which must take BS (a science degree), never BA
+    from jobagent.apply.answers import _education_by_school
+    sf = ["Select One", "GED", "HS", "AA", "BA", "BS", "MA", "MS", "MBA", "PhD"]
+    fields = [{"id": "s1", "kind": "text", "label": "Education 1 — School or University", "value": "University of Michigan"},
+              {"id": "d1", "kind": "combobox", "label": "Education 1 — Degree", "value": "MS", "options": sf},
+              {"id": "s2", "kind": "text", "label": "Education 2 — School or University", "value": "University of Toronto"},
+              {"id": "d2", "kind": "combobox", "label": "Education 2 — Degree", "value": "", "options": sf}]
+    got = _education_by_school(fields, {"resume": "AIE"})
+    assert {k: v.value for k, v in got.items()} == {"d2": "BS"}   # the master's already holds MS
+
+
 def test_judge_never_rewrites_application_questions():
     class FakeLLM:
         def json_chat(self, system, user, max_tokens):
@@ -353,6 +366,36 @@ def test_work_or_other_experience_headings_are_entries():
         assert page.evaluate(_ENTRIES_JS, None) == {"work": 2}
         b.close()
     text = "Work or Other Experience\nWork or Other Experience 1\nJob Title\nAI Engineer Intern\n"
+    assert [p.field for p in missing_entries(text, {"work": 2})] == ["工作经历条数"]
+
+
+def test_optional_and_required_tags_in_section_headings():
+    # Salesforce's Workday (2026-11-13): "Work History (Optional)" / "Education (Required)", entries "Work History
+    # (Optional) 5". Unrecognized, the parser's extra entry (a project read as a job) kept its empty From / To
+    from playwright.sync_api import sync_playwright
+    from jobagent.apply import forms
+    from jobagent.apply.adapters import _ENTRIES_JS
+    from jobagent.apply.audit import missing_entries
+    html = """<form id="f"><h3>Work History (Optional)</h3>
+      <div><h4>Work History (Optional) 1</h4><label for="a">Company</label><input id="a" value="Acme">
+      <button type="button">Delete</button></div>
+      <div><h4>Work History (Optional) 2</h4><label for="b">Company</label><input id="b" value="">
+      <button type="button" onclick="this.parentElement.remove()">Delete</button></div>
+      <button type="button">Add Another</button>
+      <h3>Education (Required)</h3><div><h4>Education (Required) 1</h4>
+      <label for="s">School or University</label><input id="s" value="State University"></div></form>"""
+    with sync_playwright() as p:
+        b = p.chromium.launch()
+        page = b.new_page()
+        page.set_content(html)
+        labels = [f["label"] for f in forms.snapshot(page, "#f").fields]
+        assert labels == ["Work Experience 1 — Company", "Work Experience 2 — Company",
+                          "Education 1 — School or University"]
+        assert page.evaluate(_ENTRIES_JS, None) == {"work": 2, "edu": 0}
+        assert page.evaluate(_ENTRIES_JS, "work") is True       # deletes the last work entry
+        assert page.evaluate(_ENTRIES_JS, None) == {"work": 1, "edu": 0}
+        b.close()
+    text = "Work History (Optional)\nWork History (Optional) 1\nCompany\nAcme\nEducation (Required)\n"
     assert [p.field for p in missing_entries(text, {"work": 2})] == ["工作经历条数"]
 
 
